@@ -6,7 +6,7 @@ module Olyx
       SSN_PATTERN   = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/
       CARD_PATTERN  = /\b(?:\d[ \-]?){13,19}\b/
       IPV4_PATTERN  = /\b(?:\d{1,3}\.){3}\d{1,3}\b/
-      TOKEN_PATTERN = /\b(?:Bearer|sk-|ak_live_|fy-ent-)[A-Za-z0-9._\-]{8,}\b/i
+      TOKEN_PATTERN = /\b(?:Bearer\s+|sk-|ak_live_|fy-ent-)[A-Za-z0-9._\-]{8,}\b/i
 
       PATTERNS = [
         [ EMAIL_PATTERN, "[EMAIL]" ],

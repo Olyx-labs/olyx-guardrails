@@ -41,8 +41,13 @@ module Olyx
         patterns:         injection_result[:patterns]
       }
 
-      # Secret scanning (scans input for leaked credentials in the prompt)
-      secret_result = SecretScanner.baseline_scan(input_str)
+      # Secret scanning — rescue Blocked so check() always returns a result hash.
+      # Callers that want the exception (proxy controllers) call SecretScanner.scan directly.
+      secret_result = begin
+        SecretScanner.scan(input_str, secret_action: secret_action, custom_patterns: custom_patterns)
+      rescue SecretScanner::Blocked => e
+        { text: input_str, leaked: true, findings: e.findings }
+      end
       secret_leaked = secret_result[:leaked]
       secret_blocks = secret_action == "block"
       checks << {

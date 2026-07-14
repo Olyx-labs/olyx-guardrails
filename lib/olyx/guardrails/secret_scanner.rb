@@ -9,12 +9,12 @@ module Olyx
         end
       end
 
-      CONFIDENTIALITY_MARKERS = %w[
-        confidential proprietary restricted
-        "internal use only" "not for distribution" "do not share"
-        "do not distribute" "top secret" "trade secret" "need to know"
-        "company confidential" "attorney-client privilege"
-        "attorney client privilege" "work product" "privileged and confidential"
+      CONFIDENTIALITY_MARKERS = [
+        "confidential", "proprietary", "restricted",
+        "internal use only", "not for distribution", "do not share",
+        "do not distribute", "top secret", "trade secret", "need to know",
+        "company confidential", "attorney-client privilege",
+        "attorney client privilege", "work product", "privileged and confidential"
       ].map { |m| Regexp.new(Regexp.escape(m), Regexp::IGNORECASE) }.freeze
 
       INTERNAL_SUFFIXES = /
