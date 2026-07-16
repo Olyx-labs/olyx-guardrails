@@ -72,7 +72,9 @@ class PiiScrubberTest < Minitest::Test
   end
 
   def test_does_not_redact_luhn_invalid_numeric_id
-    text = "Order #1234567890123 shipped today"
+    # 17 digits, outside PHONE_PATTERN's max range (16 digits), so this
+    # isolates the CARD_PATTERN + Luhn behavior specifically.
+    text = "Reference #12345678901234567 confirmed"
     assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
   end
 
