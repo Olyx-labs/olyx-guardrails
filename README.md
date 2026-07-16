@@ -7,8 +7,9 @@
 - Secret and credential scanning
 - Input length enforcement
 - Pluggable AI analyzer hook for semantic evaluation
+- Rootly incident integration — violations open incidents automatically
 
-No runtime dependencies. No external API calls. Runs in the same thread as the request.
+No runtime dependencies for the core checks. No external API calls. Runs in the same thread as the request.
 
 ## Installation
 
@@ -229,6 +230,62 @@ SecretScanner.baseline_scan(text)
 - **Injection detection** catches known phrasing and structural tags. Paraphrasing, translation, encoding (base64, ROT13, homoglyphs), or novel attack patterns not in `PHRASE_PATTERNS` will not be detected by regex alone — use the AI hook for semantic coverage.
 - **Secret scanning** covers a fixed set of vendor token formats. GCP, Azure, Stripe, PEM-encoded private keys, and generic high-entropy strings are not covered.
 - **PII patterns** are biased toward US/Western formats. Non-US national identifiers and unicode obfuscation are not reliably caught.
+
+---
+
+## Rootly Integration
+
+`RootlyNotifier` opens a Rootly incident whenever a guardrail violation is detected. It is opt-in and loaded separately so projects not using Rootly pay no cost.
+
+```ruby
+require "olyx/guardrails/integrations/rootly_notifier"
+
+notifier = Olyx::Guardrails::Integrations::RootlyNotifier.new(
+  api_key:     ENV["ROOTLY_API_KEY"],
+  environment: ENV["RAILS_ENV"]   # included in incident title
+)
+
+result = Olyx::Guardrails.check(input, ai_analyzer: my_hook)
+
+if result[:risk_score] > 0.5
+  notifier.notify(
+    result,
+    input:    input,
+    metadata: { user_id: current_user.id, endpoint: request.path }
+  )
+end
+```
+
+#### Severity mapping
+
+| Risk score | Rootly severity |
+|---|---|
+| >= 0.75 | sev1 |
+| >= 0.50 | sev2 |
+| >= 0.25 | sev3 |
+| < 0.25  | sev4 |
+
+#### Incident content
+
+Every incident includes:
+- Violation types (injection attempt, secret leaked, PII detected, input length exceeded)
+- Risk score and whether the request was blocked
+- AI analysis reason (when `ai_analyzer:` is supplied and returns a `reason`)
+- Input preview (first 300 characters)
+- Any caller-supplied metadata key/value pairs
+- Labels: `ai-safety`, `olyx-guardrails`
+
+#### Return value
+
+```ruby
+{ success: true,  incident_id: "abc123", status: 201 }
+{ success: false, error: "connection refused" }          # network failure
+nil                                                       # risk_score was 0
+```
+
+See [`examples/rootly_integration.rb`](examples/rootly_integration.rb) for a full runnable example with Claude.
+
+---
 
 ## Development
 

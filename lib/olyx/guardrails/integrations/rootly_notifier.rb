@@ -1,0 +1,123 @@
+require "net/http"
+require "json"
+
+module Olyx
+  module Guardrails
+    module Integrations
+      class RootlyNotifier
+        ROOTLY_API = "https://api.rootly.com".freeze
+
+        SEVERITY_MAP = [
+          [0.75, "sev1"],
+          [0.50, "sev2"],
+          [0.25, "sev3"],
+          [0.0,  "sev4"]
+        ].freeze
+
+        def initialize(api_key:, environment: nil)
+          @api_key     = api_key
+          @environment = environment
+        end
+
+        # Sends a Rootly incident when the result contains a violation.
+        # Returns nil when risk_score is 0 (nothing to report).
+        # Returns { success:, incident_id: } or { success: false, error: } otherwise.
+        #
+        #   notifier.notify(result, input: raw_text, metadata: { user_id: 42 })
+        def notify(result, input: nil, metadata: {})
+          return nil unless result.is_a?(Hash) && result[:risk_score].to_f > 0
+
+          payload = build_payload(result, input: input, metadata: metadata)
+          post_incident(payload)
+        end
+
+        private
+
+        def build_payload(result, input:, metadata:)
+          violations = violation_labels(result)
+          env_tag    = @environment ? " [#{@environment}]" : ""
+
+          {
+            data: {
+              type: "incidents",
+              attributes: {
+                title:         "AI Guardrail Violation#{env_tag}: #{violations.first}",
+                summary:       build_summary(result, input, violations, metadata),
+                severity_slug: severity_for(result[:risk_score].to_f),
+                labels:        [{ name: "ai-safety" }, { name: "olyx-guardrails" }]
+              }
+            }
+          }
+        end
+
+        def violation_labels(result)
+          labels = []
+          labels << "injection attempt" if result[:injection_attempt]
+          labels << "secret leaked"     if result[:secret_leaked]
+          labels << "PII detected"      if result[:pii_detected]
+
+          length_check = result[:checks]&.find { |c| c[:type] == "length" }
+          labels << "input length exceeded" if length_check && !length_check[:allowed]
+
+          labels.empty? ? ["policy violation"] : labels
+        end
+
+        def build_summary(result, input, violations, metadata)
+          lines = [
+            "**Violations:** #{violations.join(', ')}",
+            "**Risk score:** #{result[:risk_score]}",
+            "**Request blocked:** #{!result[:allowed]}"
+          ]
+
+          if (reason = result.dig(:ai_analysis, :reason))
+            lines << "**AI analysis:** #{reason}"
+          end
+
+          if input
+            preview = input.to_s[0..300]
+            preview += "…" if input.to_s.length > 300
+            lines << "**Input preview:** #{preview}"
+          end
+
+          metadata.each { |k, v| lines << "**#{k}:** #{v}" }
+
+          lines.join("\n")
+        end
+
+        def severity_for(score)
+          SEVERITY_MAP.find { |threshold, _| score >= threshold }&.last || "sev4"
+        end
+
+        def post_incident(payload)
+          uri  = URI("#{ROOTLY_API}/v1/incidents")
+          http = Net::HTTP.new(uri.host, uri.port)
+          http.use_ssl      = true
+          http.open_timeout = 5
+          http.read_timeout = 10
+
+          req                  = Net::HTTP::Post.new(uri)
+          req["Authorization"] = "Bearer #{@api_key}"
+          req["Content-Type"]  = "application/vnd.api+json"
+          req["Accept"]        = "application/vnd.api+json"
+          req.body             = JSON.generate(payload)
+
+          response = http.request(req)
+
+          {
+            success:     response.code.to_i < 300,
+            status:      response.code.to_i,
+            incident_id: parse_incident_id(response)
+          }
+        rescue => e
+          { success: false, error: e.message }
+        end
+
+        def parse_incident_id(response)
+          JSON.parse(response.body).dig("data", "id")
+        rescue
+          nil
+        end
+      end
+    end
+  end
+end

@@ -20,6 +20,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `result[:risk_score]` now takes the maximum of the regex-derived score and
   the hook's `risk_score` when provided, so an AI-assigned high-confidence
   score is never silently downgraded by a lower regex score.
+- `Olyx::Guardrails::Integrations::RootlyNotifier` — opens a Rootly incident
+  when a guardrail violation is detected. Maps `risk_score` to Rootly severity
+  (sev1–sev4), includes violation labels, input preview, AI analysis reason,
+  and arbitrary caller metadata in the incident summary. Loaded on demand via
+  `require "olyx/guardrails/integrations/rootly_notifier"` — not required by
+  the core gem so projects not using Rootly pay no cost.
+- `examples/claude_analyzer.rb` — runnable reference implementation of the
+  `ai_analyzer:` hook wired to Claude via the Anthropic Ruby SDK.
+- `examples/rootly_integration.rb` — end-to-end example: check → Claude
+  semantic analysis → Rootly incident on violation.
 
 ## [0.1.0] - 2026-07-15
 

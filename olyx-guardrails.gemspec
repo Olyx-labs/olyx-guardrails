@@ -1,10 +1,12 @@
 Gem::Specification.new do |s|
   s.name        = "olyx-guardrails"
   s.version     = "0.2.0"
-  s.summary     = "AI guardrails for Ruby: PII scrubbing, prompt injection detection, and secret scanning."
-  s.description = "Standalone Ruby library for AI input/output safety. Detects and redacts PII, " \
-                  "identifies prompt injection attacks, and scans for leaked secrets — " \
-                  "no external dependencies, no API calls, runs entirely in-process."
+  s.summary     = "AI governance guardrails for Ruby: PII scrubbing, injection detection, secret scanning, and Rootly incident integration."
+  s.description = "Standalone Ruby library for AI input safety. Detects and redacts PII, " \
+                  "identifies prompt injection attacks (including multi-turn patterns), scans for " \
+                  "leaked secrets, and opens Rootly incidents on violations — no external " \
+                  "dependencies for the core checks, runs entirely in-process. Ships with a " \
+                  "pluggable ai_analyzer: hook for LLM-backed semantic evaluation."
   s.license     = "Apache-2.0"
   s.authors     = ["Moses Njoroge"]
   s.email       = ["mosesnjoroge@olyxai.io"]
@@ -16,7 +18,7 @@ Gem::Specification.new do |s|
     "rubygems_mfa_required"  => "true"
   }
 
-  s.files         = Dir["lib/**/*.rb"] + %w[LICENSE README.md CHANGELOG.md]
+  s.files         = Dir["lib/**/*.rb"] + Dir["examples/*.rb"] + %w[LICENSE README.md CHANGELOG.md]
   s.require_paths = ["lib"]
 
   s.required_ruby_version = ">= 3.1"
