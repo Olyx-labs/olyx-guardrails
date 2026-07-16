@@ -42,4 +42,28 @@ class PiiScrubberTest < Minitest::Test
     result = Olyx::Guardrails::PiiScrubber.scrub_messages_with_detection(messages)
     refute result[:detected]
   end
+
+  def test_scrubs_passport_with_context
+    result = Olyx::Guardrails::PiiScrubber.scrub("my passport number: AB1234567")
+    assert_includes result, "[PASSPORT]"
+    refute_includes result, "AB1234567"
+  end
+
+  def test_scrubs_iban
+    text = "please wire to GB29NWBK60161331926819"
+    assert_includes Olyx::Guardrails::PiiScrubber.scrub(text), "[IBAN]"
+  end
+
+  def test_scrubs_dob_slash_format
+    assert_includes Olyx::Guardrails::PiiScrubber.scrub("DOB: 01/15/1990"), "[DOB]"
+  end
+
+  def test_scrubs_dob_spelled_out
+    assert_includes Olyx::Guardrails::PiiScrubber.scrub("born on January 15, 1990"), "[DOB]"
+  end
+
+  def test_clean_text_without_pii_unchanged
+    text = "The weather in Paris is lovely in spring."
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
 end

@@ -29,13 +29,24 @@ module Olyx
         |192\.168\.\d{1,3}\.\d{1,3})
       /xi.freeze
 
+      # AWS access key IDs: 20-char all-caps alphanumeric starting with AKIA/ASIA/AROA/ABIA/ACCA/AIPA
+      AWS_ACCESS_KEY = /\b(AKIA|ASIA|AROA|ABIA|ACCA|AIPA)[A-Z0-9]{16}\b/.freeze
+
+      # AWS secret access keys: 40-char base64 string, often preceded by a label
+      AWS_SECRET_KEY = /
+        (?:aws[_\-\s]?(?:secret[_\-\s]?)?(?:access[_\-\s]?)?key
+        |secret[_\-\s]access[_\-\s]key)
+        [\s=:\"']+([A-Za-z0-9\/+=]{40})\b
+      /xi.freeze
+
       EXTRA_TOKEN_PREFIXES = /
-        \bghp_\w+ | \bghs_\w+ | \bgho_\w+ |
-        \bxoxb-\S+ | \bxoxp-\S+ | \bxoxs-\S+ |
-        \bglpat-\w+ |
-        \bAKIA\w+ | \bASIA\w+ |
+        \bghp_\w+ | \bghs_\w+ | \bgho_\w+ | \bghr_\w+ |
+        \bxoxb-\S+ | \bxoxp-\S+ | \bxoxs-\S+ | \bxoxe-\S+ |
+        \bglpat-\w+ | \bgldt-\w+ |
         \bnpm_\w+ |
-        \bSG\.\w+ |
+        \bSG\.[A-Za-z0-9._\-]{20,} |
+        \bey[A-Za-z0-9._\-]{20,}\.[A-Za-z0-9._\-]{20,} |
+        \bsk-(?:ant-|proj-)?[A-Za-z0-9_\-]{20,} |
         \bkey-\S+
       /xi.freeze
 
@@ -58,6 +69,14 @@ module Olyx
 
         if (m = PRIVATE_IP_IN_URL.match(t))
           findings << { category: "private_network_address", matched: m[0] }
+        end
+
+        if (m = AWS_ACCESS_KEY.match(t))
+          findings << { category: "aws_access_key", matched: m[0] }
+        end
+
+        if (m = AWS_SECRET_KEY.match(t))
+          findings << { category: "aws_secret_key", matched: "#{m[0][0..24]}…" }
         end
 
         if (m = EXTRA_TOKEN_PREFIXES.match(t))

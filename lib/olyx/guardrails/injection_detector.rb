@@ -30,6 +30,17 @@ module Olyx
 
       ALL_PATTERNS = (STRUCTURAL_PATTERNS + PHRASE_PATTERNS).freeze
 
+      # Multi-turn fragment pairs: an attacker can split a jailbreak across two
+      # consecutive messages so no single message trips a single-message scanner.
+      # Each entry is [user_fragment, assistant_fragment] — both must appear in
+      # adjacent user→assistant turns to flag as injection.
+      MULTI_TURN_PAIRS = [
+        [ /hypothetically/i,        /no\s+restrictions?/i ],
+        [ /for\s+a\s+story/i,       /ignore\s+(?:your\s+)?(?:guidelines?|rules?)/i ],
+        [ /pretend\s+you('re|\s+are)/i, /as\s+(an?\s+)?(?:AI|assistant)\s+without/i ],
+        [ /let'?s?\s+play\s+a\s+game/i, /you\s+(?:must|have\s+to)\s+answer/i ]
+      ].freeze
+
       def self.scan(messages)
         detected = []
 
@@ -50,6 +61,8 @@ module Olyx
             detected << { role: role, match: match[0].strip }
           end
         end
+
+        detected.concat(scan_multi_turn(messages))
 
         {
           injection_attempt: detected.any?,
@@ -72,6 +85,22 @@ module Olyx
         when Array  then content.filter_map { |c| c.is_a?(Hash) ? (c["text"] || c[:text]) : nil }.join(" ")
         else ""
         end
+      end
+
+      private_class_method def self.scan_multi_turn(messages)
+        detected = []
+        messages.each_cons(2) do |first, second|
+          first_content  = extract_content(first).to_s
+          second_content = extract_content(second).to_s
+          MULTI_TURN_PAIRS.each do |user_pat, followup_pat|
+            next unless first_content.match?(user_pat) && second_content.match?(followup_pat)
+            detected << {
+              role:  "multi-turn",
+              match: "#{first_content[user_pat].strip} / #{second_content[followup_pat].strip}"
+            }
+          end
+        end
+        detected
       end
     end
   end

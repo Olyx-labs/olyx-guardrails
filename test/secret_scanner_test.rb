@@ -64,4 +64,32 @@ class SecretScannerTest < Minitest::Test
     end
     assert error.findings.any?
   end
+
+  def test_detects_aws_access_key_id
+    result = Olyx::Guardrails::SecretScanner.baseline_scan("key=AKIAIOSFODNN7EXAMPLE here")
+    assert result[:leaked]
+    assert result[:findings].any? { |f| f[:category] == "aws_access_key" }
+  end
+
+  def test_detects_aws_asia_key_id
+    result = Olyx::Guardrails::SecretScanner.baseline_scan("Using ASIAIOSFODNN7EXAMPLE for temp creds")
+    assert result[:leaked]
+    assert result[:findings].any? { |f| f[:category] == "aws_access_key" }
+  end
+
+  def test_detects_aws_secret_key
+    result = Olyx::Guardrails::SecretScanner.baseline_scan(
+      "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    )
+    assert result[:leaked]
+    assert result[:findings].any? { |f| f[:category] == "aws_secret_key" }
+  end
+
+  def test_detects_anthropic_api_key
+    result = Olyx::Guardrails::SecretScanner.baseline_scan(
+      "Authorization: Bearer sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890ABCD"
+    )
+    assert result[:leaked]
+    assert result[:findings].any? { |f| f[:category] == "secret_token" }
+  end
 end

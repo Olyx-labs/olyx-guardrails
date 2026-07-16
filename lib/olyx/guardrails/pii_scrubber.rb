@@ -1,20 +1,38 @@
 module Olyx
   module Guardrails
     class PiiScrubber
-      EMAIL_PATTERN = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/
-      PHONE_PATTERN = /(?:\+?\d[\s\-.]?){7,15}\d/
-      SSN_PATTERN   = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/
-      CARD_PATTERN  = /\b(?:\d[ \-]?){13,19}\b/
-      IPV4_PATTERN  = /\b(?:\d{1,3}\.){3}\d{1,3}\b/
-      TOKEN_PATTERN = /\b(?:Bearer\s+|sk-|ak_live_|fy-ent-)[A-Za-z0-9._\-]{8,}\b/i
+      EMAIL_PATTERN    = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/
+      PHONE_PATTERN    = /(?:\+?\d[\s\-.]?){7,15}\d/
+      SSN_PATTERN      = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/
+      CARD_PATTERN     = /\b(?:\d[ \-]?){13,19}\b/
+      IPV4_PATTERN     = /\b(?:\d{1,3}\.){3}\d{1,3}\b/
+      TOKEN_PATTERN    = /\b(?:Bearer\s+|sk-|ak_live_|fy-ent-)[A-Za-z0-9._\-]{8,}\b/i
+
+      # Passport: most countries use 6-9 alphanumeric chars; anchor with context words
+      # to avoid matching arbitrary codes.
+      PASSPORT_PATTERN = /\b(?:passport(?:\s+(?:no|number|#))?[\s:]+)([A-Z]{1,2}\d{6,9})\b/i
+
+      # IBAN: 2-letter country code + 2 check digits + up to 30 alphanumeric chars.
+      IBAN_PATTERN     = /\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b/
+
+      # Date of birth — common formats: MM/DD/YYYY, DD-MM-YYYY, YYYY-MM-DD, spelled out.
+      DOB_PATTERN      = /
+        \b(?:dob|date\s+of\s+birth|born\s+on|birthday)[\s:]+
+        (?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}
+        |\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}
+        |(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})
+      /ix
 
       PATTERNS = [
-        [ EMAIL_PATTERN, "[EMAIL]" ],
-        [ SSN_PATTERN,   "[SSN]"   ],
-        [ IPV4_PATTERN,  "[IP]"    ],
-        [ TOKEN_PATTERN, "[TOKEN]" ],
-        [ CARD_PATTERN,  "[CARD]"  ],
-        [ PHONE_PATTERN, "[PHONE]" ]
+        [ EMAIL_PATTERN,    "[EMAIL]"    ],
+        [ SSN_PATTERN,      "[SSN]"      ],
+        [ PASSPORT_PATTERN, "[PASSPORT]" ],
+        [ IBAN_PATTERN,     "[IBAN]"     ],
+        [ DOB_PATTERN,      "[DOB]"      ],
+        [ IPV4_PATTERN,     "[IP]"       ],
+        [ TOKEN_PATTERN,    "[TOKEN]"    ],
+        [ CARD_PATTERN,     "[CARD]"     ],
+        [ PHONE_PATTERN,    "[PHONE]"    ]
       ].freeze
 
       def self.scrub(text)
