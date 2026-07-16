@@ -32,20 +32,28 @@ A hash containing:
 
 #### Check object shapes
 
+The `length` check runs first. If the input already exceeds
+`max_input_length`, the `pii`, `injection`, and `secret` checks are skipped
+entirely (their cost isn't paid on content that's being rejected on size
+alone) and each carries `skipped: true` with a neutral, non-detected value.
+
 - `PII`
   - `type: "pii"`
   - `allowed: true`
   - `detected: boolean`
+  - `skipped: true` — present only when the length check failed
 - `Injection`
   - `type: "injection"`
   - `allowed: boolean`
   - `injection_attempt: boolean`
   - `patterns: Array<Hash>`
+  - `skipped: true` — present only when the length check failed
 - `Secret`
   - `type: "secret"`
   - `allowed: boolean`
   - `leaked: boolean`
   - `count: integer`
+  - `skipped: true` — present only when the length check failed
 - `Length`
   - `type: "length"`
   - `allowed: boolean`

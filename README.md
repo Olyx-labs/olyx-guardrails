@@ -169,6 +169,18 @@ Detects leaked secrets, internal endpoints, private network URLs, and common tok
 - The `secret_action: "block"` path in `check` converts the blocked exception into a failure result rather than bubbling the exception.
 - A final result is considered disallowed when any individual check is not allowed.
 - `risk_score` is a heuristic between `0.0` and `1.0` that increases with injection, secret leakage, PII detection, and any blocked check.
+- The `length` check runs first. If input already exceeds `max_input_length`, the `pii`, `injection`, and `secret` checks are skipped (marked `skipped: true`) rather than run on content that's being rejected on size alone.
+
+## Limitations
+
+`olyx-guardrails` is pattern-based, not semantic. It's a useful first line of defense, not a complete AI-safety solution. In particular:
+
+- **Injection detection is a phrase/structure blocklist.** It catches known jailbreak wording and structural tags, not underlying intent. Rephrasing, translation, encoding (base64, ROT13, etc.), or any technique not covered by `PHRASE_PATTERNS`/`STRUCTURAL_PATTERNS` will not be detected.
+- **Secret scanning covers a fixed set of vendor token formats** (GitHub, GitLab, Slack, npm, AWS, Anthropic, SendGrid, JWT) plus generic confidentiality/internal-network heuristics. It does not cover every provider's key format (e.g. GCP, Azure, Stripe), PEM-encoded private keys, or generic high-entropy strings.
+- **PII patterns are biased toward US/Western formats** (SSN, US-style phone numbers, IBAN, passport heuristics). Non-US identifiers and unicode obfuscation (spaced-out text, homoglyphs) are not reliably caught.
+- **No semantic understanding.** All detection is regular-expression and keyword matching — there is no ML classifier or language model involved.
+
+Use this library as one layer in a defense-in-depth strategy — combine it with upstream rate limiting, output monitoring, and human review where the risk warrants it, rather than relying on it as a sole safety control.
 
 ## Examples
 

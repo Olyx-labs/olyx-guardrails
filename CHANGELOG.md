@@ -30,3 +30,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `PiiScrubber::PHONE_PATTERN` no longer matches an arbitrary substring of a
   longer digit run; it now requires the full contiguous digit sequence to be
   captured
+
+### Changed
+- `Olyx::Guardrails.check` now evaluates the `length` check first and skips
+  the `pii`, `injection`, and `secret` scans entirely when input already
+  exceeds `max_input_length`, instead of paying their full regex-scanning
+  cost before rejecting on size. Previously a 20MB oversized payload took
+  ~2.6s to reject even with a tiny `max_input_length`; it now rejects in
+  under a millisecond. Skipped checks are marked `skipped: true`.

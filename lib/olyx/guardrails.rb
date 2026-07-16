@@ -28,13 +28,25 @@ module Olyx
       secret_action: "alert",
       custom_patterns: []
     )
-      input_str = input.to_s
+      input_str    = input.to_s
+      length_check = check_length(input_str, max_input_length)
 
-      pii_check       = check_pii(input_str)
-      injection_check = check_injection(input_str, injection_block)
-      secret_check    = check_secret(input_str, secret_action, custom_patterns)
-      length_check    = check_length(input_str, max_input_length)
-      checks          = [pii_check, injection_check, secret_check, length_check]
+      if length_check[:allowed]
+        pii_check       = check_pii(input_str)
+        injection_check = check_injection(input_str, injection_block)
+        secret_check    = check_secret(input_str, secret_action, custom_patterns)
+      else
+        # Input already exceeds max_input_length — skip the expensive scans
+        # rather than paying their full cost on content that's being
+        # rejected on size alone. Callers who need to inspect an oversized,
+        # rejected payload can call PiiScrubber/InjectionDetector/
+        # SecretScanner directly.
+        pii_check       = skipped_check("pii", detected: false)
+        injection_check = skipped_check("injection", injection_attempt: false, patterns: [])
+        secret_check    = skipped_check("secret", leaked: false, count: 0)
+      end
+
+      checks = [pii_check, injection_check, secret_check, length_check]
 
       {
         allowed:           checks.all? { |c| c[:allowed] },
@@ -85,6 +97,10 @@ module Olyx
     private_class_method def self.check_length(input_str, max_input_length)
       exceeded = input_str.length > max_input_length
       { type: "length", allowed: !exceeded, length: input_str.length, max_length: max_input_length }
+    end
+
+    private_class_method def self.skipped_check(type, **fields)
+      { type: type, allowed: true, skipped: true, **fields }
     end
 
     private_class_method def self.compute_risk_score(pii:, injection:, secret:, checks:)
