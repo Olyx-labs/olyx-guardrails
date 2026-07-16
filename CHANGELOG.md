@@ -17,3 +17,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   IDs, AWS secret keys, Anthropic keys, and JWT bearer tokens; supports
   `alert`, `redact`, and `block` actions plus custom regex patterns
 - Apache-2.0 license
+
+### Fixed
+- `SecretScanner` `redact` action now removes the full matched secret instead
+  of only the truncated prefix shown in `findings` — long AWS secret keys,
+  tokens, and JWTs were previously left partially exposed in "redacted" output
+- `PiiScrubber::CARD_PATTERN` no longer swallows a trailing space or hyphen
+  from surrounding text when redacting a card-like number
+- `PiiScrubber::CARD_PATTERN` now validates matches against a Luhn checksum
+  before redacting, so ordinary numeric IDs (order numbers, timestamps,
+  tracking numbers) in the 13-19 digit range are no longer mislabeled `[CARD]`
+- `PiiScrubber::PHONE_PATTERN` no longer matches an arbitrary substring of a
+  longer digit run; it now requires the full contiguous digit sequence to be
+  captured
