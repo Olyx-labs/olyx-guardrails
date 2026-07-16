@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ruby /private/tmp/claude-501/-Users-mosesnjoroge-code-mosesnjoroge-ruby-olyx-labs-olyx-guardrails/31f44cbd-5ca0-441e-91f2-17d3a0fb8596/scratchpad/repro_custom_redos.rb)"
+    ]
+  }
+}

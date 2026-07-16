@@ -50,53 +50,30 @@ module Olyx
         \bkey-\S+
       /xi.freeze
 
+      # Categories whose full match is longer than what's safe to surface in
+      # findings/logs get truncated for display — but redaction always acts on
+      # the untruncated value tracked internally, never the display string.
+      DISPLAY_TRUNCATE_AT = {
+        "aws_secret_key" => 25,
+        "secret_token"   => 40,
+        "custom_pattern" => 81
+      }.freeze
+
       def self.baseline_scan(text)
-        findings = []
-        t = text.to_s
-
-        CONFIDENTIALITY_MARKERS.each do |re|
-          m = re.match(t)
-          if m
-            findings << { category: "confidentiality_marker", matched: m[0] }
-            break
-          end
-        end
-
-        if (m = INTERNAL_SUFFIXES.match(t))
-          word_start = t[0...m.begin(0)].rindex(/[\s"']/).then { |i| i ? i + 1 : 0 }
-          findings << { category: "internal_endpoint", matched: t[word_start...m.end(0)] }
-        end
-
-        if (m = PRIVATE_IP_IN_URL.match(t))
-          findings << { category: "private_network_address", matched: m[0] }
-        end
-
-        if (m = AWS_ACCESS_KEY.match(t))
-          findings << { category: "aws_access_key", matched: m[0] }
-        end
-
-        if (m = AWS_SECRET_KEY.match(t))
-          findings << { category: "aws_secret_key", matched: "#{m[0][0..24]}…" }
-        end
-
-        if (m = EXTRA_TOKEN_PREFIXES.match(t))
-          findings << { category: "secret_token", matched: "#{m[0][0..39]}…" }
-        end
-
-        { leaked: findings.any?, findings: findings }
+        findings = raw_findings(text)
+        { leaked: findings.any?, findings: findings.map { |f| display_finding(f) } }
       end
 
       # Standalone scan — no Rails deps. For project-aware scanning with
       # custom patterns, use SecretLeakageScanner in olyx-api which wraps this.
       def self.scan(text, secret_action: "alert", custom_patterns: [])
-        result   = baseline_scan(text)
-        findings = result[:findings].dup
+        findings = raw_findings(text.to_s)
 
         custom_patterns.each do |pattern_str|
           re = Regexp.new(pattern_str, Regexp::IGNORECASE)
           m  = re.match(text.to_s)
           next unless m
-          findings << { category: "custom_pattern", matched: m[0].to_s[0..80] }
+          findings << { category: "custom_pattern", full: m[0].to_s }
         rescue RegexpError
           next
         end
@@ -109,17 +86,62 @@ module Olyx
           when "redact"
             output_text = apply_redactions(output_text, findings)
           when "block"
-            raise Blocked.new(findings)
+            raise Blocked.new(findings.map { |f| display_finding(f) })
           end
         end
 
-        { text: output_text, leaked: leaked, findings: findings }
+        { text: output_text, leaked: leaked, findings: findings.map { |f| display_finding(f) } }
+      end
+
+      # Detection pass shared by baseline_scan and scan — every finding carries
+      # the full, untruncated match under :full so redaction is always exact.
+      private_class_method def self.raw_findings(text)
+        findings = []
+        t = text.to_s
+
+        CONFIDENTIALITY_MARKERS.each do |re|
+          m = re.match(t)
+          if m
+            findings << { category: "confidentiality_marker", full: m[0] }
+            break
+          end
+        end
+
+        if (m = INTERNAL_SUFFIXES.match(t))
+          word_start = t[0...m.begin(0)].rindex(/[\s"']/).then { |i| i ? i + 1 : 0 }
+          findings << { category: "internal_endpoint", full: t[word_start...m.end(0)] }
+        end
+
+        if (m = PRIVATE_IP_IN_URL.match(t))
+          findings << { category: "private_network_address", full: m[0] }
+        end
+
+        if (m = AWS_ACCESS_KEY.match(t))
+          findings << { category: "aws_access_key", full: m[0] }
+        end
+
+        if (m = AWS_SECRET_KEY.match(t))
+          findings << { category: "aws_secret_key", full: m[0] }
+        end
+
+        if (m = EXTRA_TOKEN_PREFIXES.match(t))
+          findings << { category: "secret_token", full: m[0] }
+        end
+
+        findings
+      end
+
+      private_class_method def self.display_finding(finding)
+        limit = DISPLAY_TRUNCATE_AT[finding[:category]]
+        full  = finding[:full]
+        matched = limit && full.length > limit ? "#{full[0...limit]}…" : full
+        { category: finding[:category], matched: matched }
       end
 
       private_class_method def self.apply_redactions(text, findings)
         findings.each_with_object(text.dup) do |finding, t|
-          raw = finding[:matched].to_s.delete_suffix("…")
-          t.gsub!(raw, "[REDACTED]") if raw && !raw.empty?
+          raw = finding[:full].to_s
+          t.gsub!(raw, "[REDACTED]") if !raw.empty?
         end
       end
     end

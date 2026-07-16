@@ -92,4 +92,29 @@ class SecretScannerTest < Minitest::Test
     assert result[:leaked]
     assert result[:findings].any? { |f| f[:category] == "secret_token" }
   end
+
+  def test_redact_fully_removes_long_aws_secret_key
+    secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    result = Olyx::Guardrails::SecretScanner.scan(
+      "aws_secret_access_key = #{secret}",
+      secret_action: "redact"
+    )
+    refute_includes result[:text], secret[25..]
+    assert_includes result[:text], "[REDACTED]"
+  end
+
+  def test_redact_fully_removes_long_token
+    token = "ghp_" + ("a" * 60)
+    result = Olyx::Guardrails::SecretScanner.scan("token=#{token}", secret_action: "redact")
+    refute_includes result[:text], token[40..]
+    assert_includes result[:text], "[REDACTED]"
+  end
+
+  def test_display_matched_value_still_truncated_for_long_secret
+    secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    result = Olyx::Guardrails::SecretScanner.baseline_scan("aws_secret_access_key = #{secret}")
+    finding = result[:findings].find { |f| f[:category] == "aws_secret_key" }
+    refute_equal secret, finding[:matched]
+    assert_includes finding[:matched], "…"
+  end
 end

@@ -4,7 +4,9 @@ module Olyx
       EMAIL_PATTERN    = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/
       PHONE_PATTERN    = /(?:\+?\d[\s\-.]?){7,15}\d/
       SSN_PATTERN      = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/
-      CARD_PATTERN     = /\b(?:\d[ \-]?){13,19}\b/
+      # Anchored on a mandatory trailing digit (not a separator) so the match
+      # can't absorb a trailing space/hyphen that belongs to surrounding text.
+      CARD_PATTERN     = /\b\d(?:[ \-]?\d){12,18}\b/
       IPV4_PATTERN     = /\b(?:\d{1,3}\.){3}\d{1,3}\b/
       TOKEN_PATTERN    = /\b(?:Bearer\s+|sk-|ak_live_|fy-ent-)[A-Za-z0-9._\-]{8,}\b/i
 
@@ -37,8 +39,31 @@ module Olyx
 
       def self.scrub(text)
         return text unless text.is_a?(String)
-        PATTERNS.reduce(text) { |t, (pattern, replacement)| t.gsub(pattern, replacement) }
+        PATTERNS.reduce(text) do |t, (pattern, replacement)|
+          if pattern.equal?(CARD_PATTERN)
+            t.gsub(pattern) { |match| luhn_valid?(match) ? replacement : match }
+          else
+            t.gsub(pattern, replacement)
+          end
+        end
       end
+
+      # Luhn checksum — filters CARD_PATTERN's digit-count heuristic down to
+      # numbers that are actually structurally valid card numbers, so plain
+      # numeric IDs (order #s, timestamps, tracking #s) aren't mislabeled.
+      def self.luhn_valid?(number_str)
+        digits = number_str.gsub(/\D/, "").chars.map(&:to_i)
+        return false if digits.length < 13
+
+        sum = digits.reverse.each_with_index.sum do |digit, index|
+          next digit if index.even?
+          doubled = digit * 2
+          doubled > 9 ? doubled - 9 : doubled
+        end
+
+        (sum % 10).zero?
+      end
+      private_class_method :luhn_valid?
 
       def self.scrub_messages(messages)
         scrub_messages_with_detection(messages)[:messages]

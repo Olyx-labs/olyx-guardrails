@@ -66,4 +66,18 @@ class PiiScrubberTest < Minitest::Test
     text = "The weather in Paris is lovely in spring."
     assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
   end
+
+  def test_scrubs_valid_card_number
+    assert_equal "card [CARD] on file", Olyx::Guardrails::PiiScrubber.scrub("card 4111111111111111 on file")
+  end
+
+  def test_does_not_redact_luhn_invalid_numeric_id
+    text = "Order #1234567890123 shipped today"
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_card_redaction_preserves_surrounding_whitespace
+    result = Olyx::Guardrails::PiiScrubber.scrub("card 4111-1111-1111-1111 was charged")
+    assert_equal "card [CARD] was charged", result
+  end
 end

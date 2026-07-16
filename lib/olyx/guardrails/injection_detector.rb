@@ -46,12 +46,7 @@ module Olyx
 
         messages.each do |msg|
           content = extract_content(msg)
-          next if content.nil?
-
-          case content
-          when String then next if content.strip.empty?
-          when Array  then next if content.empty?
-          end
+          next if content.strip.empty?
 
           role = msg["role"] || msg[:role] || "unknown"
 
