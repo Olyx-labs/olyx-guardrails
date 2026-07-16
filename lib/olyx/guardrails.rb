@@ -5,6 +5,11 @@ require_relative "guardrails/secret_scanner"
 
 module Olyx
   module Guardrails
+    INJECTION_RISK_WEIGHT = 0.50
+    SECRET_RISK_WEIGHT    = 0.25
+    PII_RISK_WEIGHT       = 0.10
+    BLOCKED_RISK_WEIGHT   = 0.15
+
     # Single-call guardrail check — runs PII detection, injection detection,
     # and secret scanning. Returns the same shape as GuardrailService.ruby_check
     # so olyx-api can delegate directly.
@@ -24,68 +29,71 @@ module Olyx
       custom_patterns: []
     )
       input_str = input.to_s
-      checks    = []
 
-      # PII
-      pii_redacted  = PiiScrubber.scrub(input_str)
-      pii_detected  = pii_redacted != input_str
-      checks << { type: "pii", allowed: true, detected: pii_detected }
+      pii_check       = check_pii(input_str)
+      injection_check = check_injection(input_str, injection_block)
+      secret_check    = check_secret(input_str, secret_action, custom_patterns)
+      length_check    = check_length(input_str, max_input_length)
+      checks          = [pii_check, injection_check, secret_check, length_check]
 
-      # Injection
-      injection_result = InjectionDetector.scan([ { "role" => "user", "content" => input_str } ])
-      injection_attempt = injection_result[:injection_attempt]
-      checks << {
-        type:             "injection",
-        allowed:          !injection_attempt || !injection_block,
-        injection_attempt: injection_attempt,
-        patterns:         injection_result[:patterns]
+      {
+        allowed:           checks.all? { |c| c[:allowed] },
+        pii_detected:      pii_check[:detected],
+        injection_attempt: injection_check[:injection_attempt],
+        secret_leaked:     secret_check[:leaked],
+        risk_score:        compute_risk_score(
+          pii:       pii_check[:detected],
+          injection: injection_check[:injection_attempt],
+          secret:    secret_check[:leaked],
+          checks:    checks
+        ),
+        checks: checks
       }
+    end
 
-      # Secret scanning — rescue Blocked so check() always returns a result hash.
-      # Callers that want the exception (proxy controllers) call SecretScanner.scan directly.
-      secret_result = begin
+    private_class_method def self.check_pii(input_str)
+      detected = PiiScrubber.scrub(input_str) != input_str
+      # PII alone never blocks a request — it only feeds risk_score.
+      { type: "pii", allowed: true, detected: detected }
+    end
+
+    private_class_method def self.check_injection(input_str, injection_block)
+      result  = InjectionDetector.scan([ { "role" => "user", "content" => input_str } ])
+      attempt = result[:injection_attempt]
+      {
+        type:              "injection",
+        allowed:           !attempt || !injection_block,
+        injection_attempt: attempt,
+        patterns:          result[:patterns]
+      }
+    end
+
+    # Rescues Blocked so check() always returns a result hash. Callers that
+    # want the exception (proxy controllers) call SecretScanner.scan directly.
+    private_class_method def self.check_secret(input_str, secret_action, custom_patterns)
+      result = begin
         SecretScanner.scan(input_str, secret_action: secret_action, custom_patterns: custom_patterns)
       rescue SecretScanner::Blocked => e
         { text: input_str, leaked: true, findings: e.findings }
       end
-      secret_leaked = secret_result[:leaked]
-      secret_blocks = secret_action == "block"
-      checks << {
-        type:    "secret",
-        allowed: !secret_leaked || !secret_blocks,
-        leaked:  secret_leaked,
-        count:   secret_result[:findings].size
-      }
 
-      # Length
-      length_exceeded = input_str.length > max_input_length
-      checks << {
-        type:       "length",
-        allowed:    !length_exceeded,
-        length:     input_str.length,
-        max_length: max_input_length
-      }
-
-      blocked = !checks.all? { |c| c[:allowed] }
-
-      {
-        allowed:           !blocked,
-        pii_detected:      pii_detected,
-        injection_attempt: injection_attempt,
-        secret_leaked:     secret_leaked,
-        risk_score:        compute_risk_score(pii: pii_detected, injection: injection_attempt, secret: secret_leaked, checks: checks),
-        checks:            checks
-      }
+      leaked = result[:leaked]
+      blocks = secret_action == "block"
+      { type: "secret", allowed: !leaked || !blocks, leaked: leaked, count: result[:findings].size }
     end
 
-    def self.compute_risk_score(pii:, injection:, secret:, checks:)
+    private_class_method def self.check_length(input_str, max_input_length)
+      exceeded = input_str.length > max_input_length
+      { type: "length", allowed: !exceeded, length: input_str.length, max_length: max_input_length }
+    end
+
+    private_class_method def self.compute_risk_score(pii:, injection:, secret:, checks:)
       score  = 0.0
-      score += 0.5  if injection
-      score += 0.25 if secret
-      score += 0.10 if pii
-      score += 0.15 if checks.any? { |c| !c[:allowed] }
+      score += INJECTION_RISK_WEIGHT if injection
+      score += SECRET_RISK_WEIGHT    if secret
+      score += PII_RISK_WEIGHT       if pii
+      score += BLOCKED_RISK_WEIGHT   if checks.any? { |c| !c[:allowed] }
       score.clamp(0.0, 1.0).round(4)
     end
-    private_class_method :compute_risk_score
   end
 end
