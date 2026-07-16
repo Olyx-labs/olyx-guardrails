@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = "olyx-guardrails"
-  s.version     = "0.1.0"
+  s.version     = "0.2.0"
   s.summary     = "AI guardrails for Ruby: PII scrubbing, prompt injection detection, and secret scanning."
   s.description = "Standalone Ruby library for AI input/output safety. Detects and redacts PII, " \
                   "identifies prompt injection attacks, and scans for leaked secrets — " \

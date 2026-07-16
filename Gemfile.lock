@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    olyx-guardrails (0.1.0)
+    olyx-guardrails (0.2.0)
 
 GEM
   remote: https://rubygems.org/
@@ -20,7 +20,7 @@ DEPENDENCIES
 
 CHECKSUMS
   minitest (5.27.0)
-  olyx-guardrails (0.1.0)
+  olyx-guardrails (0.2.0)
   rake (13.4.2)
 
 BUNDLED WITH

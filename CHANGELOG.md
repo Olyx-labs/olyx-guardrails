@@ -3,6 +3,24 @@
 All notable changes to olyx-guardrails are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-07-16
+
+### Added
+- `ai_analyzer:` hook on `Olyx::Guardrails.check` — an optional callable that
+  receives `(text, context)` and returns an AI-powered evaluation. Enables
+  semantic injection detection, intent-aware PII classification, and any
+  LLM-backed safety check without adding runtime dependencies to the gem.
+  The hook follows defense-in-depth: AI findings union with regex findings —
+  the hook can flag additional violations but cannot clear existing ones.
+  Exceptions raised by the hook are rescued; the error is surfaced in
+  `result[:ai_analysis][:error]` and the regex result stands.
+- `result[:ai_analysis]` — present when `ai_analyzer:` is supplied; carries
+  the hook's `injection_attempt`, `pii_detected`, `secret_leaked`,
+  `risk_score`, and `reason` fields, plus any `error` from a failed call.
+- `result[:risk_score]` now takes the maximum of the regex-derived score and
+  the hook's `risk_score` when provided, so an AI-assigned high-confidence
+  score is never silently downgraded by a lower regex score.
+
 ## [0.1.0] - 2026-07-15
 
 ### Added
