@@ -82,4 +82,13 @@ class PiiScrubberTest < Minitest::Test
     result = Olyx::Guardrails::PiiScrubber.scrub("card 4111-1111-1111-1111 was charged")
     assert_equal "card [CARD] was charged", result
   end
+
+  def test_scrubs_phone_with_leading_plus
+    assert_equal "call [PHONE] now", Olyx::Guardrails::PiiScrubber.scrub("call +15551234567 now")
+  end
+
+  def test_phone_pattern_does_not_grab_substring_of_longer_digit_run
+    text = "Reference #12345678901234567 confirmed"
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
 end

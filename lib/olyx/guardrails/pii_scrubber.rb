@@ -2,7 +2,10 @@ module Olyx
   module Guardrails
     class PiiScrubber
       EMAIL_PATTERN    = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/
-      PHONE_PATTERN    = /(?:\+?\d[\s\-.]?){7,15}\d/
+      # Digit lookaround at both ends (unlike the other patterns, this had no
+      # boundary at all) so the match can't land on an arbitrary substring of
+      # a longer digit run. \b doesn't work here since it drops a leading "+".
+      PHONE_PATTERN    = /(?<!\d)\+?(?:\d[\s\-.]?){7,15}\d(?!\d)/
       SSN_PATTERN      = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/
       # Anchored on a mandatory trailing digit (not a separator) so the match
       # can't absorb a trailing space/hyphen that belongs to surrounding text.
