@@ -21,12 +21,32 @@ module Olyx
     #     secret_action:       "alert",
     #     custom_patterns:     []
     #   )
+    # ai_analyzer: optional callable — receives (text, context) and returns a hash.
+    #
+    # context keys passed to the hook:
+    #   pii_detected:       Boolean — regex found PII
+    #   injection_attempt:  Boolean — regex found injection patterns
+    #   injection_patterns: Array   — matched pattern details
+    #   secret_leaked:      Boolean — regex found secrets
+    #
+    # Expected return keys (all optional):
+    #   injection_attempt: Boolean
+    #   pii_detected:      Boolean
+    #   secret_leaked:     Boolean
+    #   risk_score:        Float (0.0..1.0) — takes precedence when higher than regex score
+    #   reason:            String — LLM explanation, included in ai_analysis
+    #
+    # The hook follows defense-in-depth: AI findings union with regex findings —
+    # the hook can flag additional violations but cannot clear existing ones.
+    # Exceptions raised by the hook are rescued; the error is recorded in
+    # ai_analysis[:error] and the regex result stands.
     def self.check(
       input,
       max_input_length: 10_000,
       injection_block: true,
       secret_action: "alert",
-      custom_patterns: []
+      custom_patterns: [],
+      ai_analyzer: nil
     )
       input_str    = input.to_s
       length_check = check_length(input_str, max_input_length)
@@ -46,21 +66,47 @@ module Olyx
         secret_check    = skipped_check("secret", leaked: false, count: 0)
       end
 
+      ai_result = if ai_analyzer && length_check[:allowed]
+        run_ai_analysis(ai_analyzer, input_str, {
+          pii_detected:       pii_check[:detected],
+          injection_attempt:  injection_check[:injection_attempt],
+          injection_patterns: injection_check[:patterns],
+          secret_leaked:      secret_check[:leaked]
+        })
+      end
+
+      if ai_result && !ai_result[:error]
+        injection_check = ai_merge_injection(injection_check, ai_result, injection_block)
+        pii_check       = ai_merge_pii(pii_check, ai_result)
+        secret_check    = ai_merge_secret(secret_check, ai_result, secret_action)
+      end
+
       checks = [pii_check, injection_check, secret_check, length_check]
 
-      {
+      regex_risk = compute_risk_score(
+        pii:       pii_check[:detected],
+        injection: injection_check[:injection_attempt],
+        secret:    secret_check[:leaked],
+        checks:    checks
+      )
+
+      risk_score = if ai_result && ai_result[:risk_score]
+        [regex_risk, ai_result[:risk_score].to_f.clamp(0.0, 1.0)].max.round(4)
+      else
+        regex_risk
+      end
+
+      result = {
         allowed:           checks.all? { |c| c[:allowed] },
         pii_detected:      pii_check[:detected],
         injection_attempt: injection_check[:injection_attempt],
         secret_leaked:     secret_check[:leaked],
-        risk_score:        compute_risk_score(
-          pii:       pii_check[:detected],
-          injection: injection_check[:injection_attempt],
-          secret:    secret_check[:leaked],
-          checks:    checks
-        ),
-        checks: checks
+        risk_score:        risk_score,
+        checks:            checks
       }
+
+      result[:ai_analysis] = ai_result if ai_result
+      result
     end
 
     private_class_method def self.check_pii(input_str)
@@ -101,6 +147,29 @@ module Olyx
 
     private_class_method def self.skipped_check(type, **fields)
       { type: type, allowed: true, skipped: true, **fields }
+    end
+
+    private_class_method def self.run_ai_analysis(analyzer, text, context)
+      result = analyzer.call(text, context)
+      return { error: "ai_analyzer must return a Hash" } unless result.is_a?(Hash)
+      result.slice(:injection_attempt, :pii_detected, :secret_leaked, :risk_score, :reason)
+    rescue => e
+      { error: e.message.to_s[0..200] }
+    end
+
+    private_class_method def self.ai_merge_injection(check, ai_result, injection_block)
+      return check unless ai_result[:injection_attempt]
+      check.merge(injection_attempt: true, allowed: !injection_block, ai_flagged: true)
+    end
+
+    private_class_method def self.ai_merge_pii(check, ai_result)
+      return check unless ai_result[:pii_detected]
+      check.merge(detected: true, ai_flagged: true)
+    end
+
+    private_class_method def self.ai_merge_secret(check, ai_result, secret_action)
+      return check unless ai_result[:secret_leaked]
+      check.merge(leaked: true, allowed: secret_action != "block", ai_flagged: true)
     end
 
     private_class_method def self.compute_risk_score(pii:, injection:, secret:, checks:)
