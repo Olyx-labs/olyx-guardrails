@@ -5,6 +5,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.2.0] - 2026-07-16
 
+### Security
+- `RootlyNotifier` no longer sends raw, unredacted input in the incident
+  "Input preview." Previously, since incidents are only opened on a
+  violation, the preview was guaranteed to contain the exact PII or secret
+  that triggered the alert — forwarding it in plaintext to a third-party
+  API. The preview is now passed through `PiiScrubber.scrub` and
+  `SecretScanner.scan(secret_action: "redact")` before truncation.
+- `Olyx::Guardrails.check` no longer crashes when an `ai_analyzer:` hook
+  returns a non-finite or non-numeric `risk_score` (`NaN`, `Infinity`, an
+  Array, a garbage string, etc.). Previously this raised an uncaught
+  `ArgumentError`/`NoMethodError` from inside `Float#clamp`, directly
+  contradicting the documented "fault-tolerant" guarantee — a single
+  malformed LLM response could take down the caller's request. The score is
+  now coerced defensively via `Float(value, exception: false)` plus a
+  `finite?` check; an unusable value is treated as "no score" rather than
+  crashing or silently substituting a number.
+- `RootlyNotifier#notify` now wraps payload-building (not just the network
+  call) in the same rescue, and normalizes a non-Hash `metadata:` to `{}`,
+  so a malformed `result` shape or `metadata: nil` degrades to
+  `{ success: false, error: ... }` instead of raising into the caller.
+- Fixed gemspec metadata (`homepage`, `source_code_uri`, `changelog_uri`,
+  `bug_tracker_uri`) pointing at a nonexistent `olyx-labs/olyx-guardrails`
+  repo on a nonexistent `main` branch. Now points at the actual
+  `mosesnjoroge/olyx-guardrails` repo on `master`.
+
+### Fixed
+- `ai_merge_secret` now sets `count` to at least 1 when the AI hook flags a
+  secret the regex scan missed, instead of leaving `leaked: true` alongside
+  a stale `count: 0`.
+- `test/rootly_notifier_test.rb`'s network-error test previously asserted a
+  hand-written literal hash and never actually exercised `post_incident` —
+  it would have passed even if the real rescue were removed. It now drives
+  the real method against a genuinely refused local connection.
+
 ### Added
 - `ai_analyzer:` hook on `Olyx::Guardrails.check` — an optional callable that
   receives `(text, context)` and returns an AI-powered evaluation. Enables

@@ -230,12 +230,15 @@ SecretScanner.baseline_scan(text)
 - **Injection detection** catches known phrasing and structural tags. Paraphrasing, translation, encoding (base64, ROT13, homoglyphs), or novel attack patterns not in `PHRASE_PATTERNS` will not be detected by regex alone — use the AI hook for semantic coverage.
 - **Secret scanning** covers a fixed set of vendor token formats. GCP, Azure, Stripe, PEM-encoded private keys, and generic high-entropy strings are not covered.
 - **PII patterns** are biased toward US/Western formats. Non-US national identifiers and unicode obfuscation are not reliably caught.
+- **`ai_analyzer:` sends input text to whatever backs your hook** — e.g. a third-party LLM API — on every call the regex layer doesn't already catch. That has its own data-residency and vendor-trust implications this gem doesn't manage for you; make sure your hook's provider is one you're allowed to send this data to.
 
 ---
 
 ## Rootly Integration
 
 `RootlyNotifier` opens a Rootly incident whenever a guardrail violation is detected. It is opt-in and loaded separately so projects not using Rootly pay no cost.
+
+`notify` makes a synchronous HTTPS call (5s open / 10s read timeout) and never raises — it always returns a hash, degrading to `{ success: false, error: ... }` on any failure. Calling it inline in a request path means a slow Rootly API can add up to ~15s of latency to that request; for production traffic, consider dispatching it from a background job instead.
 
 ```ruby
 require "olyx/guardrails/integrations/rootly_notifier"
@@ -271,7 +274,7 @@ Every incident includes:
 - Violation types (injection attempt, secret leaked, PII detected, input length exceeded)
 - Risk score and whether the request was blocked
 - AI analysis reason (when `ai_analyzer:` is supplied and returns a `reason`)
-- Input preview (first 300 characters)
+- Input preview (first 300 characters, redacted via `PiiScrubber`/`SecretScanner` before truncation — the raw PII/secret that triggered the violation is never sent to Rootly)
 - Any caller-supplied metadata key/value pairs
 - Labels: `ai-safety`, `olyx-guardrails`
 

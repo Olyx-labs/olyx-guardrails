@@ -90,11 +90,8 @@ module Olyx
         checks:    checks
       )
 
-      risk_score = if ai_result && ai_result[:risk_score]
-        [regex_risk, ai_result[:risk_score].to_f.clamp(0.0, 1.0)].max.round(4)
-      else
-        regex_risk
-      end
+      ai_risk_score = ai_result && coerce_risk_score(ai_result[:risk_score])
+      risk_score    = ai_risk_score ? [regex_risk, ai_risk_score].max.round(4) : regex_risk
 
       result = {
         allowed:           checks.all? { |c| c[:allowed] },
@@ -169,7 +166,19 @@ module Olyx
 
     private_class_method def self.ai_merge_secret(check, ai_result, secret_action)
       return check unless ai_result[:secret_leaked]
-      check.merge(leaked: true, allowed: secret_action != "block", ai_flagged: true)
+      count = check[:count].to_i
+      check.merge(leaked: true, allowed: secret_action != "block", count: [count, 1].max, ai_flagged: true)
+    end
+
+    # A hook is untrusted input: coerce risk_score defensively so a NaN,
+    # Infinity, wrong type, or garbage string from a flaky LLM response can
+    # never propagate into a Float#clamp comparison and raise. Returns nil
+    # (treated as "no usable score") rather than a fallback number, so a
+    # broken hook never silently produces a specific-looking wrong score.
+    private_class_method def self.coerce_risk_score(value)
+      float = Float(value, exception: false)
+      return nil if float.nil? || !float.finite?
+      float.clamp(0.0, 1.0)
     end
 
     private_class_method def self.compute_risk_score(pii:, injection:, secret:, checks:)

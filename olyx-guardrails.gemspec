@@ -10,11 +10,11 @@ Gem::Specification.new do |s|
   s.license     = "Apache-2.0"
   s.authors     = ["Moses Njoroge"]
   s.email       = ["mosesnjoroge@olyxai.io"]
-  s.homepage    = "https://github.com/olyx-labs/olyx-guardrails"
+  s.homepage    = "https://github.com/mosesnjoroge/olyx-guardrails"
   s.metadata    = {
-    "source_code_uri"        => "https://github.com/olyx-labs/olyx-guardrails",
-    "changelog_uri"          => "https://github.com/olyx-labs/olyx-guardrails/blob/main/CHANGELOG.md",
-    "bug_tracker_uri"        => "https://github.com/olyx-labs/olyx-guardrails/issues",
+    "source_code_uri"        => "https://github.com/mosesnjoroge/olyx-guardrails",
+    "changelog_uri"          => "https://github.com/mosesnjoroge/olyx-guardrails/blob/master/CHANGELOG.md",
+    "bug_tracker_uri"        => "https://github.com/mosesnjoroge/olyx-guardrails/issues",
     "rubygems_mfa_required"  => "true"
   }
 

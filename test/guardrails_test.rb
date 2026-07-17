@@ -190,4 +190,29 @@ class GuardrailsTest < Minitest::Test
     result = Olyx::Guardrails.check("clean input", ai_analyzer: hook)
     assert result[:ai_analysis][:error]
   end
+
+  def test_hook_nan_risk_score_does_not_crash
+    hook = ->(_text, _ctx) { { risk_score: 0.0 / 0.0 } }
+    result = Olyx::Guardrails.check("clean input", ai_analyzer: hook)
+    assert result[:risk_score] >= 0.0
+  end
+
+  def test_hook_infinite_risk_score_does_not_crash
+    hook = ->(_text, _ctx) { { risk_score: Float::INFINITY } }
+    result = Olyx::Guardrails.check("clean input", ai_analyzer: hook)
+    assert result[:risk_score] >= 0.0
+  end
+
+  def test_hook_non_numeric_risk_score_does_not_crash
+    hook = ->(_text, _ctx) { { risk_score: [1, 2, 3] } }
+    result = Olyx::Guardrails.check("clean input", ai_analyzer: hook)
+    assert result[:risk_score] >= 0.0
+  end
+
+  def test_hook_secret_flag_sets_nonzero_count
+    hook = ->(_text, _ctx) { { secret_leaked: true } }
+    result = Olyx::Guardrails.check("clean input", ai_analyzer: hook, secret_action: "block")
+    secret_check = result[:checks].find { |c| c[:type] == "secret" }
+    assert_equal 1, secret_check[:count]
+  end
 end

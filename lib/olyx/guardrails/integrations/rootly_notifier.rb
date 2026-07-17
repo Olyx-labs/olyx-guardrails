@@ -1,5 +1,7 @@
 require "net/http"
 require "json"
+require_relative "../pii_scrubber"
+require_relative "../secret_scanner"
 
 module Olyx
   module Guardrails
@@ -14,6 +16,13 @@ module Olyx
           [0.0,  "sev4"]
         ].freeze
 
+        # Preview is redacted before truncation, so a secret/PII match that
+        # straddles the truncation point still gets caught. The scrub window
+        # is generous relative to any pattern's max length but still bounded,
+        # so building a preview from a huge input stays cheap.
+        PREVIEW_LENGTH      = 300
+        PREVIEW_SCRUB_WINDOW = 2_000
+
         def initialize(api_key:, environment: nil)
           @api_key     = api_key
           @environment = environment
@@ -22,13 +31,18 @@ module Olyx
         # Sends a Rootly incident when the result contains a violation.
         # Returns nil when risk_score is 0 (nothing to report).
         # Returns { success:, incident_id: } or { success: false, error: } otherwise.
+        # Never raises — payload-building and delivery failures both degrade
+        # to { success: false, error: }, matching the network-failure shape.
         #
         #   notifier.notify(result, input: raw_text, metadata: { user_id: 42 })
         def notify(result, input: nil, metadata: {})
           return nil unless result.is_a?(Hash) && result[:risk_score].to_f > 0
 
-          payload = build_payload(result, input: input, metadata: metadata)
+          metadata = {} unless metadata.is_a?(Hash)
+          payload  = build_payload(result, input: input, metadata: metadata)
           post_incident(payload)
+        rescue => e
+          { success: false, error: e.message }
         end
 
         private
@@ -73,15 +87,23 @@ module Olyx
             lines << "**AI analysis:** #{reason}"
           end
 
-          if input
-            preview = input.to_s[0..300]
-            preview += "…" if input.to_s.length > 300
-            lines << "**Input preview:** #{preview}"
-          end
+          lines << "**Input preview:** #{redacted_preview(input)}" if input
 
           metadata.each { |k, v| lines << "**#{k}:** #{v}" }
 
           lines.join("\n")
+        end
+
+        # Redacts PII and secrets before truncating, so what leaves the
+        # process for a third-party incident tool is never the raw violation
+        # content that triggered the alert in the first place.
+        def redacted_preview(input)
+          raw       = input.to_s[0...PREVIEW_SCRUB_WINDOW]
+          scrubbed  = PiiScrubber.scrub(raw)
+          scrubbed  = SecretScanner.scan(scrubbed, secret_action: "redact")[:text]
+          truncated = scrubbed[0...PREVIEW_LENGTH]
+          truncated += "…" if scrubbed.length > PREVIEW_LENGTH || input.to_s.length > PREVIEW_SCRUB_WINDOW
+          truncated
         end
 
         def severity_for(score)
