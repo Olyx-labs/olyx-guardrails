@@ -88,10 +88,12 @@ module Olyx
           first_content  = extract_content(first).to_s
           second_content = extract_content(second).to_s
           MULTI_TURN_PAIRS.each do |user_pat, followup_pat|
-            next unless first_content.match?(user_pat) && second_content.match?(followup_pat)
+            first_match  = first_content.match(user_pat)
+            second_match = second_content.match(followup_pat)
+            next unless first_match && second_match
             detected << {
               role:  "multi-turn",
-              match: "#{first_content[user_pat].strip} / #{second_content[followup_pat].strip}"
+              match: "#{first_match[0].strip} / #{second_match[0].strip}"
             }
           end
         end

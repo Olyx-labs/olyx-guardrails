@@ -66,24 +66,16 @@ module Olyx
         secret_check    = skipped_check("secret", leaked: false, count: 0)
       end
 
-      ai_result = if ai_analyzer && length_check[:allowed]
-        run_ai_analysis(ai_analyzer, input_str, {
-          pii_detected:       pii_check[:detected],
-          injection_attempt:  injection_check[:injection_attempt],
-          injection_patterns: injection_check[:patterns],
-          secret_leaked:      secret_check[:leaked]
-        })
-      end
-
-      if ai_result && !ai_result[:error]
-        injection_check = ai_merge_injection(injection_check, ai_result, injection_block)
-        pii_check       = ai_merge_pii(pii_check, ai_result)
-        secret_check    = ai_merge_secret(secret_check, ai_result, secret_action)
-      end
+      pii_check, injection_check, secret_check, ai_result = apply_ai_analysis(
+        ai_analyzer, input_str, length_check, pii_check, injection_check, secret_check,
+        injection_block: injection_block, secret_action: secret_action
+      )
 
       checks = [pii_check, injection_check, secret_check, length_check]
 
-      regex_risk = compute_risk_score(
+      # Named checks_risk (not regex_risk) because by this point checks may
+      # already include AI-merged findings, not just the regex scan.
+      checks_risk = compute_risk_score(
         pii:       pii_check[:detected],
         injection: injection_check[:injection_attempt],
         secret:    secret_check[:leaked],
@@ -91,7 +83,7 @@ module Olyx
       )
 
       ai_risk_score = ai_result && coerce_risk_score(ai_result[:risk_score])
-      risk_score    = ai_risk_score ? [regex_risk, ai_risk_score].max.round(4) : regex_risk
+      risk_score    = ai_risk_score ? [checks_risk, ai_risk_score].max.round(4) : checks_risk
 
       result = {
         allowed:           checks.all? { |c| c[:allowed] },
@@ -144,6 +136,33 @@ module Olyx
 
     private_class_method def self.skipped_check(type, **fields)
       { type: type, allowed: true, skipped: true, **fields }
+    end
+
+    # Runs the hook (when applicable) and merges its findings into the three
+    # content checks. Returns [pii_check, injection_check, secret_check,
+    # ai_result] — ai_result is nil when there's no hook or length already
+    # failed, so callers can tell "didn't run" apart from "ran, found nothing".
+    private_class_method def self.apply_ai_analysis(
+      analyzer, input_str, length_check, pii_check, injection_check, secret_check,
+      injection_block:, secret_action:
+    )
+      return [pii_check, injection_check, secret_check, nil] unless analyzer && length_check[:allowed]
+
+      ai_result = run_ai_analysis(analyzer, input_str, {
+        pii_detected:       pii_check[:detected],
+        injection_attempt:  injection_check[:injection_attempt],
+        injection_patterns: injection_check[:patterns],
+        secret_leaked:      secret_check[:leaked]
+      })
+
+      return [pii_check, injection_check, secret_check, ai_result] if ai_result[:error]
+
+      [
+        ai_merge_pii(pii_check, ai_result),
+        ai_merge_injection(injection_check, ai_result, injection_block),
+        ai_merge_secret(secret_check, ai_result, secret_action),
+        ai_result
+      ]
     end
 
     private_class_method def self.run_ai_analysis(analyzer, text, context)

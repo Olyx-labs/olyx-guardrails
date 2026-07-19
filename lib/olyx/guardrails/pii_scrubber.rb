@@ -28,6 +28,10 @@ module Olyx
         |(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})
       /ix
 
+      # Third element is an optional validator — when present, a match is
+      # only redacted if it passes. Lets a pattern be a cheap structural
+      # filter (digit count) backed by an accuracy check (Luhn) without
+      # special-casing any one pattern in `scrub`.
       PATTERNS = [
         [ EMAIL_PATTERN,    "[EMAIL]"    ],
         [ SSN_PATTERN,      "[SSN]"      ],
@@ -36,15 +40,15 @@ module Olyx
         [ DOB_PATTERN,      "[DOB]"      ],
         [ IPV4_PATTERN,     "[IP]"       ],
         [ TOKEN_PATTERN,    "[TOKEN]"    ],
-        [ CARD_PATTERN,     "[CARD]"     ],
+        [ CARD_PATTERN,     "[CARD]",    ->(match) { luhn_valid?(match) } ],
         [ PHONE_PATTERN,    "[PHONE]"    ]
       ].freeze
 
       def self.scrub(text)
         return text unless text.is_a?(String)
-        PATTERNS.reduce(text) do |t, (pattern, replacement)|
-          if pattern.equal?(CARD_PATTERN)
-            t.gsub(pattern) { |match| luhn_valid?(match) ? replacement : match }
+        PATTERNS.reduce(text) do |t, (pattern, replacement, validator)|
+          if validator
+            t.gsub(pattern) { |match| validator.call(match) ? replacement : match }
           else
             t.gsub(pattern, replacement)
           end
