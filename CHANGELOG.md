@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.2.0] - 2026-07-16
 
+### Changed
+- Adopted the Ruby community style guide's comment conventions throughout
+  `lib/`: `# frozen_string_literal: true` on every Ruby file, YARD
+  `@param`/`@return`/`@raise`/`@example` documentation on all public
+  methods, and `REVIEW`/`OPTIMIZE` annotations marking already-documented
+  known limitations (regex-only detection coverage, the synchronous Rootly
+  network call) directly at their source instead of only in the README.
+
 ### Security
 - `RootlyNotifier` no longer sends raw, unredacted input in the incident
   "Input preview." Previously, since incidents are only opened on a
