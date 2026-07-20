@@ -21,6 +21,11 @@ class SecretScannerTest < Minitest::Test
     assert result[:findings].any? { |f| f[:category] == "private_network_address" }
   end
 
+  def test_rejects_invalid_private_ip_octets
+    result = Olyx::Guardrails::SecretScanner.scan("endpoint=http://10.999.999.999/api")
+    refute result[:findings].any? { |f| f[:category] == "private_network_address" }
+  end
+
   def test_detects_github_token
     result = Olyx::Guardrails::SecretScanner.scan("token=ghp_abc123defgh456ijklmn")
     assert result[:leaked]

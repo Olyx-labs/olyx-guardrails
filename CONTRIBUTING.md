@@ -7,6 +7,7 @@ Thank you for improving Olyx Guardrails.
 ```bash
 bundle install
 bundle exec rake test
+COVERAGE=true bundle exec rake test
 ```
 
 Ruby 3.1 or newer is supported. Changes must remain compatible with the oldest

@@ -59,8 +59,8 @@ module Olyx
         #   `:checks`, and optional `:ai_analysis` shape).
         # @param input [#to_s, nil] the original input, included in the
         #   incident as a redacted, truncated preview.
-        # @param metadata [Hash] extra `key: value` pairs appended verbatim
-        #   to the incident summary (e.g. `{ user_id: 42 }`).
+        # @param metadata [Hash] extra `key: value` pairs sanitized, bounded,
+        #   and appended to the incident summary (e.g. `{ user_id: 42 }`).
         # @return [Hash, nil] `{ success: true, incident_id:, status: }` on
         #   success, `{ success: false, error: }` on any failure, or `nil`
         #   when `result[:risk_score]` is `0` (nothing to report).

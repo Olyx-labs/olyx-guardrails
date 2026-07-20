@@ -5,14 +5,17 @@ require "digest"
 module Olyx
   module Guardrails
     # Detects leaked secrets, internal endpoints, private network
-    # addresses, and vendor token formats in free text, with `alert`,
-    # `redact`, and `block` response modes.
+    # addresses, and vendor token formats in free text, with distinct detect,
+    # redact, and exception-driven enforcement operations.
     #
     # REVIEW: vendor token coverage is a fixed list (GitHub, GitLab, Slack,
     #   npm, AWS, Anthropic, SendGrid, JWT). GCP, Azure, Stripe,
     #   PEM-encoded private keys, and generic high-entropy strings are not
     #   covered. See the README Limitations section.
     class SecretScanner
+      CUSTOM_PATTERN_TIMEOUT = 0.1
+      REGEXP_TIMEOUT_ERROR = defined?(Regexp::TimeoutError) ? Regexp::TimeoutError : RegexpError
+
       # Raised by {scan!} when a secret is found. Carries the same safe,
       # masked `findings` shape {scan} returns.
       class Blocked < StandardError
@@ -145,14 +148,22 @@ module Olyx
 
         SIMPLE_FINDING_PATTERNS.each do |category, pattern|
           t.to_enum(:scan, pattern).each do
-            findings << raw_finding(category, Regexp.last_match)
+            match = Regexp.last_match
+            invalid_private_address =
+              category == "private_network_address" && !valid_private_network_match?(match[0])
+            next if invalid_private_address
+            findings << raw_finding(category, match)
           end
         end
 
         patterns.each do |pattern|
-          t.to_enum(:scan, pattern).each do
-            match = Regexp.last_match
-            findings << raw_finding("custom_pattern", match) unless match[0].empty?
+          begin
+            t.to_enum(:scan, pattern).each do
+              match = Regexp.last_match
+              findings << raw_finding("custom_pattern", match) unless match[0].empty?
+            end
+          rescue REGEXP_TIMEOUT_ERROR
+            raise ArgumentError, "custom pattern timed out"
           end
         end
 
@@ -167,7 +178,12 @@ module Olyx
         end
 
         custom_patterns.map do |pattern|
-          Regexp.new(pattern, Regexp::IGNORECASE)
+          major, minor = RUBY_VERSION.split(".").first(2).map(&:to_i)
+          if major > 3 || (major == 3 && minor >= 2)
+            Regexp.new(pattern, Regexp::IGNORECASE, timeout: CUSTOM_PATTERN_TIMEOUT)
+          else
+            Regexp.new(pattern, Regexp::IGNORECASE)
+          end
         rescue RegexpError => e
           raise ArgumentError, "invalid custom pattern #{pattern.inspect}: #{e.message}"
         end
@@ -180,6 +196,11 @@ module Olyx
           start:    match.begin(0),
           end:      match.end(0)
         }
+      end
+
+      private_class_method def self.valid_private_network_match?(value)
+        address = value[/\b(?:10|172|192)\.(?:\d{1,3}\.){2}\d{1,3}\b/]
+        address && address.split(".").all? { |octet| octet.to_i.between?(0, 255) }
       end
 
       # Returns useful correlation data without exposing plaintext credentials.

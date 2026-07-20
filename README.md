@@ -238,6 +238,7 @@ latency-sensitive paths.
 
 ```bash
 bundle exec rake test
+COVERAGE=true bundle exec rake test
 gem build olyx-guardrails.gemspec
 ```
 

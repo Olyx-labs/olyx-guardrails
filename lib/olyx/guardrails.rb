@@ -17,8 +17,7 @@ module Olyx
 
     # Runs the full guardrail suite (PII, injection, secret, and length
     # checks) on a single input in one call, optionally enriched by a
-    # caller-supplied AI analyzer hook. Returns the same shape as
-    # `GuardrailService#ruby_check` so olyx-api can delegate directly.
+    # caller-supplied AI analyzer hook.
     #
     # The hook follows defense-in-depth: AI findings union with regex
     # findings — the hook can flag additional violations but cannot clear
@@ -308,6 +307,10 @@ module Olyx
       unless ai_analyzer.nil? || ai_analyzer.respond_to?(:call)
         raise ArgumentError, "ai_analyzer must respond to call"
       end
+
+      # Compile at the API boundary so invalid configuration fails at boot even
+      # when this particular input is oversized and content scans are skipped.
+      SecretScanner.scan("", custom_patterns: custom_patterns)
     end
 
     private_class_method def self.validate_max_input_length!(max_input_length)

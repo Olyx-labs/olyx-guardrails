@@ -257,6 +257,12 @@ class GuardrailsTest < Minitest::Test
     end
   end
 
+  def test_check_validates_custom_pattern_even_when_input_is_oversized
+    assert_raises(ArgumentError) do
+      Olyx::Guardrails.check("oversized", max_input_length: 1, custom_patterns: ["["])
+    end
+  end
+
   def test_hook_rejects_non_boolean_finding
     hook = ->(_text, _context) { { secret_leaked: "false" } }
     result = Olyx::Guardrails.check("hello", ai_analyzer: hook)
