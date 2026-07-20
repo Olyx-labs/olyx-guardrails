@@ -28,8 +28,9 @@ Gem::Specification.new do |s|
                     %w[LICENSE README.md CHANGELOG.md SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md]
   s.require_paths = ["lib"]
 
-  s.required_ruby_version = ">= 3.1"
+  s.required_ruby_version = ">= 3.4"
 
   s.add_development_dependency "minitest", "~> 5.0"
   s.add_development_dependency "rake",     "~> 13.0"
+  s.add_development_dependency "rubycritic", "~> 5.0"
 end

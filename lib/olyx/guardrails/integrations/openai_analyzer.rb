@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../../guardrails"
+require_relative "openai_analyzer_configuration"
 
 module Olyx
   module Guardrails
@@ -10,6 +11,8 @@ module Olyx
       # analysis. The OpenAI SDK is loaded only when a client or schema is not
       # injected, so requiring the core gem remains dependency-free.
       class OpenAIAnalyzer
+        # Raised when OpenAI refuses classification or omits parsed schema
+        # output from an otherwise successful response.
         class ResponseError < StandardError; end
 
         SCHEMA_MUTEX = Mutex.new
@@ -54,7 +57,7 @@ module Olyx
           request_options: nil,
           response_options: {}
         )
-          validate_options!(
+          config = OpenAIAnalyzerConfiguration.new(
             model: model,
             client: client,
             schema: schema,
@@ -64,13 +67,14 @@ module Olyx
             response_options: response_options
           )
 
-          @model            = model
-          @client           = client || self.class.openai_client
-          @schema           = schema || self.class.analysis_schema
-          @instructions     = instructions
-          @store            = store
-          @request_options  = request_options
-          @response_options = response_options.to_h { |key, value| [key.to_sym, value] }.freeze
+          analyzer_class = self.class
+          @model = config.model
+          @client = config.client || analyzer_class.openai_client
+          @schema = config.schema || analyzer_class.analysis_schema
+          @instructions = config.instructions
+          @store = config.store
+          @request_options = config.request_options
+          @response_options = config.response_options
         end
 
         # Calls the Responses API with a strict schema and returns its parsed
@@ -100,37 +104,43 @@ module Olyx
           #
           # @return [Class<OpenAI::BaseModel>]
           def analysis_schema
-            return const_get(:AnalysisSchema, false) if const_defined?(:AnalysisSchema, false)
+            existing = existing_analysis_schema
+            return existing if existing
 
             SCHEMA_MUTEX.synchronize do
-              return const_get(:AnalysisSchema, false) if const_defined?(:AnalysisSchema, false)
-
-              load_openai!
-              schema = Class.new(::OpenAI::BaseModel) do
-                required :injection_attempt, ::OpenAI::Boolean,
-                  doc: "Whether the input attempts to override or bypass trusted instructions."
-                required :pii_detected, ::OpenAI::Boolean,
-                  doc: "Whether the input contains personally identifiable information."
-                required :secret_leaked, ::OpenAI::Boolean,
-                  doc: "Whether the input contains a credential, token, secret, or private endpoint."
-                required :risk_score, Float,
-                  doc: "Overall security risk from 0.0 to 1.0."
-                required :reason, String,
-                  doc: "Concise rationale without copying credentials or personal data."
-              end
-              const_set(:AnalysisSchema, schema)
+              existing_analysis_schema || const_set(:AnalysisSchema, build_analysis_schema)
             end
           end
 
           # @return [OpenAI::Client]
           def openai_client
-            load_openai!
+            require_openai_sdk
             ::OpenAI::Client.new
           end
 
           private
 
-          def load_openai!
+          def existing_analysis_schema
+            const_get(:AnalysisSchema, false) if const_defined?(:AnalysisSchema, false)
+          end
+
+          def build_analysis_schema
+            require_openai_sdk
+            Class.new(::OpenAI::BaseModel) do
+              required :injection_attempt, ::OpenAI::Boolean,
+                doc: "Whether the input attempts to override or bypass trusted instructions."
+              required :pii_detected, ::OpenAI::Boolean,
+                doc: "Whether the input contains personally identifiable information."
+              required :secret_leaked, ::OpenAI::Boolean,
+                doc: "Whether the input contains a credential, token, secret, or private endpoint."
+              required :risk_score, Float,
+                doc: "Overall security risk from 0.0 to 1.0."
+              required :reason, String,
+                doc: "Concise rationale without copying credentials or personal data."
+            end
+          end
+
+          def require_openai_sdk
             require "openai"
           rescue LoadError
             raise LoadError,
@@ -140,50 +150,13 @@ module Olyx
 
         private
 
-        RESERVED_RESPONSE_OPTIONS = %i[model input text store request_options].freeze
-
-        def validate_options!(
-          model:, client:, schema:, instructions:, store:, request_options:, response_options:
-        )
-          unless (model.is_a?(String) && !model.strip.empty?) ||
-              (model.is_a?(Symbol) && !model.to_s.empty?)
-            raise ArgumentError, "model must be a non-empty String or Symbol"
-          end
-          unless client.nil? || client.respond_to?(:responses)
-            raise ArgumentError, "client must expose responses"
-          end
-          unless schema.nil? || schema.respond_to?(:to_json_schema)
-            raise ArgumentError, "schema must be an OpenAI schema model class"
-          end
-          unless instructions.is_a?(String) && !instructions.strip.empty?
-            raise ArgumentError, "instructions must be a non-empty String"
-          end
-          unless [true, false].include?(store)
-            raise ArgumentError, "store must be true or false"
-          end
-          unless request_options.nil? || request_options.is_a?(Hash)
-            raise ArgumentError, "request_options must be a Hash or nil"
-          end
-          unless response_options.is_a?(Hash)
-            raise ArgumentError, "response_options must be a Hash"
-          end
-          unless response_options.keys.all? { |key| key.is_a?(String) || key.is_a?(Symbol) }
-            raise ArgumentError, "response_options keys must be Strings or Symbols"
-          end
-
-          reserved = response_options.keys.map(&:to_sym) & RESERVED_RESPONSE_OPTIONS
-          return if reserved.empty?
-
-          raise ArgumentError, "response_options cannot override: #{reserved.join(', ')}"
-        end
-
         def build_input(text, context)
-          injection_patterns = context[:injection_patterns] if context.is_a?(Hash)
+          signals = context.is_a?(Hash) ? context : {}
           local_signals = {
-            pii_detected: context.is_a?(Hash) && context[:pii_detected] == true,
-            injection_attempt: context.is_a?(Hash) && context[:injection_attempt] == true,
-            injection_pattern_count: Array(injection_patterns).length,
-            secret_leaked: context.is_a?(Hash) && context[:secret_leaked] == true
+            pii_detected: signals[:pii_detected] == true,
+            injection_attempt: signals[:injection_attempt] == true,
+            injection_pattern_count: Array(signals[:injection_patterns]).length,
+            secret_leaked: signals[:secret_leaked] == true
           }
 
           [
@@ -196,20 +169,26 @@ module Olyx
         end
 
         def extract_parsed(response)
-          Array(read_member(response, :output)).each do |output|
-            Array(read_member(output, :content)).each do |content|
-              type = read_member(content, :type).to_s
-              if type == "refusal"
-                refusal = read_member(content, :refusal).to_s
-                raise ResponseError, bounded_error("OpenAI refused the analysis: #{refusal}")
-              end
-
-              parsed = read_member(content, :parsed)
-              return parsed unless parsed.nil?
-            end
+          response_contents(response).each do |content|
+            raise_for_refusal(content)
+            parsed = read_member(content, :parsed)
+            return parsed if parsed
           end
 
           raise ResponseError, "OpenAI response did not contain parsed structured output"
+        end
+
+        def response_contents(response)
+          Array(read_member(response, :output)).flat_map do |output|
+            Array(read_member(output, :content))
+          end
+        end
+
+        def raise_for_refusal(content)
+          return unless read_member(content, :type).to_s == "refusal"
+
+          refusal = read_member(content, :refusal).to_s
+          raise ResponseError, bounded_error("OpenAI refused the analysis: #{refusal}")
         end
 
         def read_member(object, key)

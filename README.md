@@ -23,7 +23,8 @@ gem "olyx-guardrails", "~> 0.3"
 bundle install
 ```
 
-Ruby 3.1 or newer is required.
+Ruby 3.4 or newer is required. The repository pins the current Ruby 3.4 patch
+release in `.ruby-version` for rbenv users.
 
 ## Decision and transformation are separate
 
@@ -235,8 +236,7 @@ Keep the local deterministic findings authoritative. OpenAI's
 [Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
 also notes that structured responses can still contain mistakes.
 
-The core gem still supports Ruby 3.1. The optional official OpenAI SDK currently
-requires Ruby 3.2 or newer.
+The gem and its optional OpenAI connector require Ruby 3.4 or newer.
 
 ## Component APIs
 

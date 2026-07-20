@@ -4,6 +4,7 @@
 /coverage/
 /doc/
 /pkg/
+/tmp/rubycritic/
 /*.gem
 /.yardoc/
 .DS_Store

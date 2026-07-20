@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.3.0] - 2026-07-20
 
 ### Breaking
+- Raised the minimum supported Ruby version from 3.1 to the actively maintained
+  Ruby 3.4 series.
 - Replaced `injection_block:` with `block_injections:` and
   `secret_action:` with the Boolean `block_secrets:` on
   `Olyx::Guardrails.check`.
@@ -38,8 +40,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Gem version now has one source of truth in `version.rb`.
-- CI uses least privilege, immutable action SHAs, and the full supported Ruby
-  matrix.
+- CI uses least privilege, immutable action SHAs, and tests the supported Ruby
+  3.4 and 4.0 release lines.
 - Added public security, contribution, conduct, ownership, dependency-update,
   and repository hygiene configuration.
 - AI analyzer results now accept schema-model objects implementing
@@ -49,6 +51,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Responses API plus Structured Outputs support instead of a model allowlist.
 
 ### Added
+- Added a project-local rbenv pin for Ruby 3.4.10 and a blocking RubyCritic
+  maintainability gate at the measured post-refactor baseline of 73.
+- Refactored scanner, analyzer configuration, and integration hot spots so no
+  individual method triggers RubyCritic's high-complexity threshold and the
+  report contains no smells or duplicated code.
 - Optional `Integrations::OpenAIAnalyzer` connector for the official OpenAI
   Ruby SDK and Responses API. It ships a strict `OpenAI::BaseModel` schema,
   consumes `content.parsed`, defaults to `store: false`, and degrades refusals

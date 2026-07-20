@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require_relative "validation"
 
 module Olyx
   module Guardrails
@@ -33,7 +34,7 @@ module Olyx
         "do not distribute", "top secret", "trade secret", "need to know",
         "company confidential", "attorney-client privilege",
         "attorney client privilege", "work product", "privileged and confidential"
-      ].map { |m| Regexp.new(Regexp.escape(m), Regexp::IGNORECASE) }.freeze
+      ].map { |marker| Regexp.new(Regexp.escape(marker), Regexp::IGNORECASE) }.freeze
 
       INTERNAL_SUFFIXES = /
         \.internal\b | \.corp\b | \.intranet\b | \.local\/ |
@@ -124,69 +125,85 @@ module Olyx
       # @param custom_patterns [Array<String>]
       # @return [Array<Hash>] private finding Hashes.
       private_class_method def self.raw_findings(text, custom_patterns: [])
-        patterns = compile_custom_patterns(custom_patterns)
-        findings = []
-        t = text.to_s
-
-        CONFIDENTIALITY_MARKERS.each do |re|
-          t.to_enum(:scan, re).each do
-            match = Regexp.last_match
-            findings << raw_finding("confidentiality_marker", match)
-          end
-        end
-
-        t.to_enum(:scan, INTERNAL_SUFFIXES).each do
-          match      = Regexp.last_match
-          word_start = t[0...match.begin(0)].rindex(/[\s"']/).then { |index| index ? index + 1 : 0 }
-          findings << {
-            category: "internal_endpoint",
-            full:     t[word_start...match.end(0)],
-            start:    word_start,
-            end:      match.end(0)
-          }
-        end
-
-        SIMPLE_FINDING_PATTERNS.each do |category, pattern|
-          t.to_enum(:scan, pattern).each do
-            match = Regexp.last_match
-            invalid_private_address =
-              category == "private_network_address" && !valid_private_network_match?(match[0])
-            next if invalid_private_address
-            findings << raw_finding(category, match)
-          end
-        end
-
-        patterns.each do |pattern|
-          begin
-            t.to_enum(:scan, pattern).each do
-              match = Regexp.last_match
-              findings << raw_finding("custom_pattern", match) unless match[0].empty?
-            end
-          rescue REGEXP_TIMEOUT_ERROR
-            raise ArgumentError, "custom pattern timed out"
-          end
-        end
-
-        findings
-          .uniq { |finding| [finding[:category], finding[:start], finding[:end]] }
-          .sort_by { |finding| [finding[:start], finding[:end], finding[:category]] }
+        source = text.to_s
+        findings = confidentiality_findings(source)
+        findings.concat(internal_endpoint_findings(source))
+        findings.concat(simple_pattern_findings(source))
+        findings.concat(custom_pattern_findings(source, custom_patterns))
+        normalize_findings(findings)
       end
 
       private_class_method def self.compile_custom_patterns(custom_patterns)
-        unless custom_patterns.is_a?(Array) && custom_patterns.all? { |pattern| pattern.is_a?(String) }
-          raise ArgumentError, "custom_patterns must be an Array of String values"
-        end
+        Validation.array_of!(custom_patterns, String, name: "custom_patterns")
+        custom_patterns.map { |pattern| compile_custom_pattern(pattern) }
+      end
 
-        custom_patterns.map do |pattern|
-          major, minor = RUBY_VERSION.split(".").first(2).map(&:to_i)
-          if major > 3 || (major == 3 && minor >= 2)
-            Regexp.new(pattern, Regexp::IGNORECASE, timeout: CUSTOM_PATTERN_TIMEOUT)
-          else
-            Regexp.new(pattern, Regexp::IGNORECASE)
-          end
-        rescue RegexpError => e
-          raise ArgumentError, "invalid custom pattern #{pattern.inspect}: #{e.message}"
+      private_class_method def self.compile_custom_pattern(pattern)
+        Regexp.new(pattern, Regexp::IGNORECASE, timeout: CUSTOM_PATTERN_TIMEOUT)
+      rescue RegexpError => error
+        raise ArgumentError, "invalid custom pattern #{pattern.inspect}: #{error.message}"
+      end
+
+      private_class_method def self.confidentiality_findings(source)
+        CONFIDENTIALITY_MARKERS.flat_map do |pattern|
+          pattern_findings(source, "confidentiality_marker", pattern)
         end
+      end
+
+      private_class_method def self.internal_endpoint_findings(source)
+        scan_matches(source, INTERNAL_SUFFIXES).map do |match|
+          endpoint_finding(source, match)
+        end
+      end
+
+      private_class_method def self.endpoint_finding(source, match)
+        match_end = match.end(0)
+        word_start = source[0...match.begin(0)].rindex(/[\s"']/)
+        word_start = word_start ? word_start + 1 : 0
+        {
+          category: "internal_endpoint",
+          full:     source[word_start...match_end],
+          start:    word_start,
+          end:      match_end
+        }
+      end
+
+      private_class_method def self.simple_pattern_findings(source)
+        SIMPLE_FINDING_PATTERNS.flat_map do |category, pattern|
+          findings = pattern_findings(source, category, pattern)
+          next findings unless category == "private_network_address"
+
+          findings.select { |finding| valid_private_network_match?(finding[:full]) }
+        end
+      end
+
+      private_class_method def self.custom_pattern_findings(source, custom_patterns)
+        compile_custom_patterns(custom_patterns).flat_map do |pattern|
+          pattern_findings(source, "custom_pattern", pattern).reject { |finding| finding[:full].empty? }
+        rescue REGEXP_TIMEOUT_ERROR
+          raise ArgumentError, "custom pattern timed out"
+        end
+      end
+
+      private_class_method def self.pattern_findings(source, category, pattern)
+        scan_matches(source, pattern).map { |match| raw_finding(category, match) }
+      end
+
+      private_class_method def self.scan_matches(source, pattern)
+        source.to_enum(:scan, pattern).map { Regexp.last_match }
+      end
+
+      private_class_method def self.normalize_findings(findings)
+        unique = findings.uniq { |finding| finding_identity(finding) }
+        unique.sort_by { |finding| finding_sort_key(finding) }
+      end
+
+      private_class_method def self.finding_identity(finding)
+        [finding[:category], finding[:start], finding[:end]]
+      end
+
+      private_class_method def self.finding_sort_key(finding)
+        [finding[:start], finding[:end], finding[:category]]
       end
 
       private_class_method def self.raw_finding(category, match)
@@ -223,22 +240,26 @@ module Olyx
       private_class_method def self.apply_redactions(text, findings)
         return "[REDACTED]" if findings.any? { |finding| finding[:category] == "confidentiality_marker" }
 
-        spans = findings
-          .map { |finding| [finding[:start], finding[:end]] }
-          .select { |start_pos, end_pos| end_pos > start_pos }
-          .sort
-
-        merged = spans.each_with_object([]) do |(start_pos, end_pos), result|
-          if result.empty? || start_pos > result.last[1]
-            result << [start_pos, end_pos]
-          else
-            result.last[1] = [result.last[1], end_pos].max
-          end
-        end
-
-        merged.reverse_each.with_object(text.dup) do |(start_pos, end_pos), output|
+        merged_redaction_spans(findings).reverse_each.with_object(text.dup) do |(start_pos, end_pos), output|
           output[start_pos...end_pos] = "[REDACTED]"
         end
+      end
+
+      private_class_method def self.merged_redaction_spans(findings)
+        spans = findings.filter_map do |finding|
+          start_pos = finding[:start]
+          end_pos = finding[:end]
+          [start_pos, end_pos] if end_pos > start_pos
+        end
+        spans.sort.each_with_object([]) { |span, merged| merge_span(merged, span) }
+      end
+
+      private_class_method def self.merge_span(merged, span)
+        previous = merged.last
+        previous_end = previous&.last
+        return merged << span unless previous_end && span.first <= previous_end
+
+        previous[1] = [previous_end, span.last].max
       end
     end
   end

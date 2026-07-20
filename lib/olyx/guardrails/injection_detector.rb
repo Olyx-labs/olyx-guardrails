@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "validation"
+
 module Olyx
   module Guardrails
     # Detects prompt injection and jailbreak attempts in chat-style
@@ -60,30 +62,13 @@ module Olyx
       #   of `{ role:, match: }` Hashes, deduplicated by matched text).
       # @raise [ArgumentError] when `messages` is not an Array of Hashes.
       def self.scan(messages)
-        unless messages.is_a?(Array) && messages.all? { |message| message.is_a?(Hash) }
-          raise ArgumentError, "messages must be an Array of Hash values"
-        end
-
-        detected = []
-
-        messages.each do |msg|
-          content = extract_content(msg)
-          next if content.strip.empty?
-
-          role = msg["role"] || msg[:role] || "unknown"
-
-          ALL_PATTERNS.each do |pattern|
-            match = content.match(pattern)
-            next unless match
-            detected << { role: role, match: match[0].strip }
-          end
-        end
-
+        validate_messages!(messages)
+        detected = messages.flat_map { |message| scan_message(message) }
         detected.concat(scan_multi_turn(messages))
 
         {
           injection_attempt: detected.any?,
-          patterns: detected.uniq { |d| d[:match] }
+          patterns: detected.uniq { |finding| finding[:match] }
         }
       end
 
@@ -104,41 +89,75 @@ module Olyx
         scan([ { "role" => "user", "content" => text.to_s } ])[:injection_attempt]
       end
 
-      # @param msg [Hash] see {scan}.
+      private_class_method def self.validate_messages!(messages)
+        Validation.array_of!(messages, Hash, name: "messages")
+      end
+
+      private_class_method def self.scan_message(message)
+        content = extract_content(message)
+        return [] if content.strip.empty?
+
+        role = message["role"] || message[:role] || "unknown"
+        ALL_PATTERNS.filter_map { |pattern| pattern_finding(content, role, pattern) }
+      end
+
+      private_class_method def self.pattern_finding(content, role, pattern)
+        match = content.match(pattern)
+        { role: role, match: match[0].strip } if match
+      end
+
+      # @param message [Hash] see {scan}.
       # @return [String] the message's text content, joining Array-style
       #   content blocks with a space, or `""` if there's no usable content.
-      private_class_method def self.extract_content(msg)
-        content = msg["content"] || msg[:content]
+      private_class_method def self.extract_content(message)
+        content = message["content"] || message[:content]
         case content
         when String then content
-        when Array  then content.filter_map { |c| c.is_a?(Hash) ? (c["text"] || c[:text]) : nil }.join(" ")
+        when Array  then content.filter_map { |block| extract_block_text(block) }.join(" ")
         else ""
         end
+      end
+
+      private_class_method def self.extract_block_text(block)
+        block["text"] || block[:text] if block.is_a?(Hash)
       end
 
       # @param messages [Array<Hash>] see {scan}.
       # @return [Array<Hash>] `{ role: "multi-turn", match: }` entries for
       #   every adjacent message pair matching a {MULTI_TURN_PAIRS} entry.
       private_class_method def self.scan_multi_turn(messages)
-        detected = []
-        messages.each_cons(2) do |first, second|
-          first_role  = (first["role"] || first[:role]).to_s.downcase
-          second_role = (second["role"] || second[:role]).to_s.downcase
-          next unless first_role == "user" && second_role == "assistant"
-
-          first_content  = extract_content(first).to_s
-          second_content = extract_content(second).to_s
-          MULTI_TURN_PAIRS.each do |user_pat, followup_pat|
-            first_match  = first_content.match(user_pat)
-            second_match = second_content.match(followup_pat)
-            next unless first_match && second_match
-            detected << {
-              role:  "multi-turn",
-              match: "#{first_match[0].strip} / #{second_match[0].strip}"
-            }
-          end
+        messages.each_cons(2).flat_map do |first, second|
+          scan_message_pair(first, second)
         end
-        detected
+      end
+
+      private_class_method def self.scan_message_pair(first, second)
+        return [] unless user_to_assistant?(first, second)
+
+        first_content = extract_content(first)
+        second_content = extract_content(second)
+        MULTI_TURN_PAIRS.filter_map do |first_pattern, second_pattern|
+          pair_finding(first_content, second_content, first_pattern, second_pattern)
+        end
+      end
+
+      private_class_method def self.user_to_assistant?(first, second)
+        message_role(first) == "user" && message_role(second) == "assistant"
+      end
+
+      private_class_method def self.message_role(message)
+        (message["role"] || message[:role]).to_s.downcase
+      end
+
+      private_class_method def self.pair_finding(first_content, second_content, first_pattern, second_pattern)
+        first_match = first_content.match(first_pattern)
+        second_match = second_content.match(second_pattern)
+        return unless first_match && second_match
+
+        {
+          role:  "multi-turn",
+          match: "#{first_match[0].strip} / #{second_match[0].strip}"
+        }
       end
     end
   end

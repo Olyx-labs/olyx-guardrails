@@ -72,8 +72,8 @@ module Olyx
           metadata = {} unless metadata.is_a?(Hash)
           payload  = build_payload(result, input: input, metadata: metadata)
           post_incident(payload)
-        rescue => e
-          { success: false, error: e.message }
+        rescue => error
+          { success: false, error: error.message }
         end
 
         private
@@ -102,7 +102,7 @@ module Olyx
           labels << "secret leaked"     if result[:secret_leaked]
           labels << "PII detected"      if result[:pii_detected]
 
-          length_check = result[:checks]&.find { |c| c[:type] == "length" }
+          length_check = result[:checks]&.find { |check| check[:type] == "length" }
           labels << "input length exceeded" if length_check && !length_check[:allowed]
 
           labels.empty? ? ["policy violation"] : labels
@@ -134,11 +134,12 @@ module Olyx
         # process for a third-party incident tool is never the raw violation
         # content that triggered the alert in the first place.
         def redacted_preview(input)
-          raw       = input.to_s[0...PREVIEW_SCRUB_WINDOW]
+          source    = input.to_s
+          raw       = source[0...PREVIEW_SCRUB_WINDOW]
           scrubbed  = PiiScrubber.scrub(raw)
           scrubbed  = SecretScanner.redact(scrubbed)[:text]
           truncated = scrubbed[0...PREVIEW_LENGTH]
-          truncated += "…" if scrubbed.length > PREVIEW_LENGTH || input.to_s.length > PREVIEW_SCRUB_WINDOW
+          truncated += "…" if scrubbed.length > PREVIEW_LENGTH || source.length > PREVIEW_SCRUB_WINDOW
           truncated
         end
 
@@ -159,28 +160,37 @@ module Olyx
         end
 
         def post_incident(payload)
-          uri  = URI("#{ROOTLY_API}/v1/incidents")
+          uri = URI("#{ROOTLY_API}/v1/incidents")
+          response = build_http(uri).request(build_request(uri, payload))
+          incident_response(response)
+        rescue => error
+          { success: false, error: error.message }
+        end
+
+        def build_http(uri)
           http = Net::HTTP.new(uri.host, uri.port)
           http.use_ssl      = true
           http.open_timeout = 5
           http.read_timeout = 10
+          http
+        end
 
-          req                  = Net::HTTP::Post.new(uri)
-          req["Authorization"] = "Bearer #{@api_key}"
-          req["Content-Type"]  = "application/vnd.api+json"
-          req["Accept"]        = "application/vnd.api+json"
-          req.body             = JSON.generate(payload)
+        def build_request(uri, payload)
+          request = Net::HTTP::Post.new(uri)
+          request["Authorization"] = "Bearer #{@api_key}"
+          request["Content-Type"] = "application/vnd.api+json"
+          request["Accept"] = "application/vnd.api+json"
+          request.body = JSON.generate(payload)
+          request
+        end
 
-          response = http.request(req)
-          status   = response.code.to_i
-
+        def incident_response(response)
+          status = response.code.to_i
           {
             success:     status.between?(200, 299),
             status:      status,
             incident_id: parse_incident_id(response)
           }
-        rescue => e
-          { success: false, error: e.message }
         end
 
         def parse_incident_id(response)

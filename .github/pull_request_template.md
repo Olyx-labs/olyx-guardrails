@@ -12,5 +12,6 @@ Describe the user-visible outcome and why the change is needed.
 
 - [ ] Tests added or updated.
 - [ ] `bundle exec rake test` passes.
+- [ ] `bundle exec rubycritic` passes.
 - [ ] Ruby syntax checks pass.
 - [ ] README, API reference, examples, and changelog are updated when needed.

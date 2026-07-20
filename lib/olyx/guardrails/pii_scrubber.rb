@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "validation"
+
 module Olyx
   module Guardrails
     # Detects and redacts common PII formats (email, phone, SSN, credit
@@ -67,11 +69,12 @@ module Olyx
       #   a String.
       def self.scrub(text)
         return text unless text.is_a?(String)
-        PATTERNS.reduce(text) do |t, (pattern, replacement, validator)|
+
+        PATTERNS.reduce(text) do |output, (pattern, replacement, validator)|
           if validator
-            t.gsub(pattern) { |match| validator.call(match) ? replacement : match }
+            output.gsub(pattern) { |match| validator.call(match) ? replacement : match }
           else
-            t.gsub(pattern, replacement)
+            output.gsub(pattern, replacement)
           end
         end
       end
@@ -118,11 +121,18 @@ module Olyx
         return false unless compact.length.between?(15, 34)
 
         rearranged = compact[4..] + compact[0, 4]
-        remainder = rearranged.each_char.reduce(0) do |value, char|
-          digits = char.match?(/[A-Z]/) ? (char.ord - 55).to_s : char
-          digits.each_char.reduce(value) { |memo, digit| ((memo * 10) + digit.to_i) % 97 }
-        end
+        remainder = rearranged.each_char.reduce(0) { |value, char| iban_remainder(value, char) }
         remainder == 1
+      end
+
+      private_class_method def self.iban_remainder(remainder, char)
+        iban_digits(char).each_char.reduce(remainder) do |value, digit|
+          ((value * 10) + digit.to_i) % 97
+        end
+      end
+
+      private_class_method def self.iban_digits(char)
+        char.match?(/[A-Z]/) ? (char.ord - 55).to_s : char
       end
 
       # @param messages [Array<Hash>] chat-style messages with `"content"`
@@ -138,21 +148,24 @@ module Olyx
       # @return [Hash] `:messages` (Array, redacted like {scrub_messages})
       #   and `:detected` (Boolean, whether any redaction occurred).
       def self.scrub_messages_with_detection(messages)
-        unless messages.is_a?(Array) && messages.all? { |message| message.is_a?(Hash) }
-          raise ArgumentError, "messages must be an Array of Hash values"
-        end
+        validate_messages!(messages)
+        results = messages.map { |message| scrub_message(message) }
+        {
+          messages: results.map(&:first),
+          detected: results.any?(&:last)
+        }
+      end
 
-        detected = false
-        scrubbed = messages.map do |msg|
-          content_key = msg.key?("content") ? "content" : (msg.key?(:content) ? :content : nil)
-          next msg unless content_key
+      private_class_method def self.validate_messages!(messages)
+        Validation.array_of!(messages, Hash, name: "messages")
+      end
 
-          redacted, content_detected = scrub_content(msg[content_key])
-          detected ||= content_detected
-          content_detected ? msg.merge(content_key => redacted) : msg
-        end
+      private_class_method def self.scrub_message(message)
+        content_key = message.key?("content") ? "content" : (message.key?(:content) ? :content : nil)
+        return [message, false] unless content_key
 
-        { messages: scrubbed, detected: detected }
+        redacted, detected = scrub_content(message[content_key])
+        [detected ? message.merge(content_key => redacted) : message, detected]
       end
 
       private_class_method def self.scrub_content(content)
@@ -161,21 +174,29 @@ module Olyx
           redacted = scrub(content)
           [redacted, redacted != content]
         when Array
-          detected = false
-          blocks = content.map do |block|
-            next block unless block.is_a?(Hash)
-            text_key = block.key?("text") ? "text" : (block.key?(:text) ? :text : nil)
-            next block unless text_key && block[text_key].is_a?(String)
-
-            redacted = scrub(block[text_key])
-            changed  = redacted != block[text_key]
-            detected ||= changed
-            changed ? block.merge(text_key => redacted) : block
-          end
-          [blocks, detected]
+          scrub_content_blocks(content)
         else
           [content, false]
         end
+      end
+
+      private_class_method def self.scrub_content_blocks(blocks)
+        results = blocks.map { |block| scrub_content_block(block) }
+        [results.map(&:first), results.any?(&:last)]
+      end
+
+      private_class_method def self.scrub_content_block(block)
+        return [block, false] unless block.is_a?(Hash)
+
+        text_key = block.key?("text") ? "text" : (block.key?(:text) ? :text : nil)
+        return [block, false] unless text_key
+
+        text = block[text_key]
+        return [block, false] unless text.is_a?(String)
+
+        redacted = scrub(text)
+        changed = redacted != text
+        [changed ? block.merge(text_key => redacted) : block, changed]
       end
     end
   end

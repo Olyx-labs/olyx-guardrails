@@ -1,0 +1,11 @@
+---
+paths:
+  - lib/
+formats:
+  - console
+# Baseline gate for this compact library. RubyCritic derives this number from
+# average Flog complexity per file, so it should be ratcheted upward only when
+# the measured architecture improves—not by fragmenting files.
+minimum_score: 73
+no_browser: true
+deduplicate_symlinks: true

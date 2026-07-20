@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "guardrails/version"
+require_relative "guardrails/validation"
 require_relative "guardrails/pii_scrubber"
 require_relative "guardrails/injection_detector"
 require_relative "guardrails/secret_scanner"
@@ -14,6 +15,7 @@ module Olyx
     SECRET_RISK_WEIGHT    = 0.25
     PII_RISK_WEIGHT       = 0.10
     BLOCKED_RISK_WEIGHT   = 0.15
+    CHECK_ORDER = %i[pii injection secret length].freeze
     AI_ANALYSIS_KEYS      = %i[
       injection_attempt
       pii_detected
@@ -73,54 +75,19 @@ module Olyx
         ai_analyzer: ai_analyzer
       )
 
-      input_str    = input.to_s
-      length_check = check_length(input_str, max_input_length)
-
-      if length_check[:allowed]
-        pii_check       = check_pii(input_str)
-        injection_check = check_injection(input_str, block_injections)
-        secret_check    = check_secret(input_str, block_secrets, custom_patterns)
-      else
-        # Input already exceeds max_input_length — skip the expensive scans
-        # rather than paying their full cost on content that's being
-        # rejected on size alone. Callers who need to inspect an oversized,
-        # rejected payload can call PiiScrubber/InjectionDetector/
-        # SecretScanner directly.
-        pii_check       = skipped_check("pii", detected: false)
-        injection_check = skipped_check("injection", injection_attempt: false, patterns: [])
-        secret_check    = skipped_check("secret", leaked: false, count: 0)
-      end
-
-      pii_check, injection_check, secret_check, ai_result = apply_ai_analysis(
-        ai_analyzer, input_str, length_check, pii_check, injection_check, secret_check,
+      source = input.to_s
+      checks = initial_checks(
+        source,
+        max_input_length: max_input_length,
+        block_injections: block_injections,
+        block_secrets: block_secrets,
+        custom_patterns: custom_patterns
+      )
+      checks, ai_result = apply_ai_analysis(
+        ai_analyzer, source, checks,
         block_injections: block_injections, block_secrets: block_secrets
       )
-
-      checks = [pii_check, injection_check, secret_check, length_check]
-
-      # Named checks_risk (not regex_risk) because by this point checks may
-      # already include AI-merged findings, not just the regex scan.
-      checks_risk = compute_risk_score(
-        pii:       pii_check[:detected],
-        injection: injection_check[:injection_attempt],
-        secret:    secret_check[:leaked],
-        checks:    checks
-      )
-
-      ai_risk_score = ai_result && coerce_risk_score(ai_result[:risk_score])
-      risk_score    = ai_risk_score ? [checks_risk, ai_risk_score].max.round(4) : checks_risk
-
-      result = {
-        allowed:           checks.all? { |c| c[:allowed] },
-        pii_detected:      pii_check[:detected],
-        injection_attempt: injection_check[:injection_attempt],
-        secret_leaked:     secret_check[:leaked],
-        risk_score:        risk_score,
-        checks:            checks
-      }
-
-      result[:ai_analysis] = ai_result if ai_result
-      result
+      build_check_result(checks, ai_result)
     end
 
     # Redacts regex-detected PII and secrets as a transformation distinct from
@@ -190,8 +157,40 @@ module Olyx
     # @return [Hash] the `length` check: `:type`, `:allowed`, `:length`
     #   (Integer), and `:max_length` (Integer).
     private_class_method def self.check_length(input_str, max_input_length)
-      exceeded = input_str.length > max_input_length
-      { type: "length", allowed: !exceeded, length: input_str.length, max_length: max_input_length }
+      length = input_str.length
+      { type: "length", allowed: length <= max_input_length, length: length, max_length: max_input_length }
+    end
+
+    private_class_method def self.initial_checks(
+      source, max_input_length:, block_injections:, block_secrets:, custom_patterns:
+    )
+      length_check = check_length(source, max_input_length)
+      content_checks = if length_check[:allowed]
+        scanned_content_checks(source, block_injections, block_secrets, custom_patterns)
+      else
+        skipped_content_checks
+      end
+      content_checks.merge(length: length_check)
+    end
+
+    private_class_method def self.scanned_content_checks(
+      source, block_injections, block_secrets, custom_patterns
+    )
+      {
+        pii:       check_pii(source),
+        injection: check_injection(source, block_injections),
+        secret:    check_secret(source, block_secrets, custom_patterns)
+      }
+    end
+
+    # Input already exceeds max_input_length, so expensive content scans are
+    # represented explicitly as skipped.
+    private_class_method def self.skipped_content_checks
+      {
+        pii:       skipped_check("pii", detected: false),
+        injection: skipped_check("injection", injection_attempt: false, patterns: []),
+        secret:    skipped_check("secret", leaked: false, count: 0)
+      }
     end
 
     # Builds a placeholder check hash for a scan that was skipped because
@@ -210,37 +209,36 @@ module Olyx
     #
     # @param analyzer [#call, nil]
     # @param input_str [String]
-    # @param length_check [Hash]
-    # @param pii_check [Hash]
-    # @param injection_check [Hash]
-    # @param secret_check [Hash]
+    # @param checks [Hash]
     # @param block_injections [Boolean]
     # @param block_secrets [Boolean]
-    # @return [Array(Hash, Hash, Hash, Hash)] `[pii_check, injection_check,
-    #   secret_check, ai_result]` — `ai_result` is `nil` when there's no hook
+    # @return [Array(Hash, Hash)] `[checks, ai_result]` — `ai_result` is `nil` when there's no hook
     #   or length already failed, so callers can tell "didn't run" apart
     #   from "ran, found nothing".
     private_class_method def self.apply_ai_analysis(
-      analyzer, input_str, length_check, pii_check, injection_check, secret_check,
-      block_injections:, block_secrets:
+      analyzer, input_str, checks, block_injections:, block_secrets:
     )
-      return [pii_check, injection_check, secret_check, nil] unless analyzer && length_check[:allowed]
+      return [checks, nil] unless analyzer && checks[:length][:allowed]
 
-      ai_result = run_ai_analysis(analyzer, input_str, {
-        pii_detected:       pii_check[:detected],
+      ai_result = run_ai_analysis(analyzer, input_str, ai_context(checks))
+      return [checks, ai_result] if ai_result[:error]
+
+      merged = checks.merge(
+        pii: ai_merge_pii(checks[:pii], ai_result),
+        injection: ai_merge_injection(checks[:injection], ai_result, block_injections),
+        secret: ai_merge_secret(checks[:secret], ai_result, block_secrets)
+      )
+      [merged, ai_result]
+    end
+
+    private_class_method def self.ai_context(checks)
+      injection_check = checks[:injection]
+      {
+        pii_detected:       checks[:pii][:detected],
         injection_attempt:  injection_check[:injection_attempt],
         injection_patterns: injection_check[:patterns],
-        secret_leaked:      secret_check[:leaked]
-      })
-
-      return [pii_check, injection_check, secret_check, ai_result] if ai_result[:error]
-
-      [
-        ai_merge_pii(pii_check, ai_result),
-        ai_merge_injection(injection_check, ai_result, block_injections),
-        ai_merge_secret(secret_check, ai_result, block_secrets),
-        ai_result
-      ]
+        secret_leaked:      checks[:secret][:leaked]
+      }
     end
 
     # Calls the hook, converts Hash-like schema models, and sanitizes the
@@ -256,25 +254,36 @@ module Olyx
     #   model.
     private_class_method def self.run_ai_analysis(analyzer, text, context)
       result = normalize_ai_analysis(analyzer.call(text, context))
-      unless result
-        return { error: "ai_analyzer must return a Hash or a schema model with deep_to_h/to_h" }
-      end
+      return invalid_ai_shape unless result
 
-      sanitized = AI_ANALYSIS_KEYS.each_with_object({}) do |key, output|
-        if result.key?(key)
-          output[key] = result[key]
-        elsif result.key?(key.to_s)
-          output[key] = result[key.to_s]
-        end
-      end
-      %i[injection_attempt pii_detected secret_leaked].each do |key|
-        next unless sanitized.key?(key)
-        return { error: "ai_analyzer #{key} must be true or false" } unless [true, false].include?(sanitized[key])
-      end
+      sanitized = sanitize_ai_analysis(result)
+      invalid_boolean = invalid_ai_boolean(sanitized)
+      return { error: "ai_analyzer #{invalid_boolean} must be true or false" } if invalid_boolean
+
       sanitized[:reason] = sanitized[:reason].to_s[0...500] if sanitized.key?(:reason)
       sanitized
-    rescue => e
-      { error: e.message.to_s[0..200] }
+    rescue => error
+      { error: error.message.to_s[0..200] }
+    end
+
+    private_class_method def self.invalid_ai_shape
+      { error: "ai_analyzer must return a Hash or a schema model with deep_to_h/to_h" }
+    end
+
+    private_class_method def self.sanitize_ai_analysis(result)
+      AI_ANALYSIS_KEYS.each_with_object({}) do |key, output|
+        string_key = key.to_s
+        symbol_value = result[key]
+        has_symbol = result.key?(key)
+        has_string = result.key?(string_key)
+        output[key] = has_symbol ? symbol_value : result[string_key] if has_symbol || has_string
+      end
+    end
+
+    private_class_method def self.invalid_ai_boolean(analysis)
+      %i[injection_attempt pii_detected secret_leaked].find do |key|
+        analysis.key?(key) && ![true, false].include?(analysis[key])
+      end
     end
 
     # OpenAI structured-output objects implement `#deep_to_h`; accepting that
@@ -331,22 +340,24 @@ module Olyx
       max_input_length:, block_injections:, block_secrets:, custom_patterns:, ai_analyzer:
     )
       validate_max_input_length!(max_input_length)
-      unless [true, false].include?(block_injections)
-        raise ArgumentError, "block_injections must be true or false"
-      end
-      unless [true, false].include?(block_secrets)
-        raise ArgumentError, "block_secrets must be true or false"
-      end
-      unless custom_patterns.is_a?(Array) && custom_patterns.all? { |pattern| pattern.is_a?(String) }
-        raise ArgumentError, "custom_patterns must be an Array of String values"
-      end
-      unless ai_analyzer.nil? || ai_analyzer.respond_to?(:call)
-        raise ArgumentError, "ai_analyzer must respond to call"
-      end
+      validate_boolean_option!(block_injections, "block_injections")
+      validate_boolean_option!(block_secrets, "block_secrets")
+      Validation.array_of!(custom_patterns, String, name: "custom_patterns")
+      validate_ai_analyzer!(ai_analyzer)
 
       # Compile at the API boundary so invalid configuration fails at boot even
       # when this particular input is oversized and content scans are skipped.
       SecretScanner.scan("", custom_patterns: custom_patterns)
+    end
+
+    private_class_method def self.validate_boolean_option!(value, name)
+      raise ArgumentError, "#{name} must be true or false" unless [true, false].include?(value)
+    end
+
+    private_class_method def self.validate_ai_analyzer!(ai_analyzer)
+      return if ai_analyzer.nil? || ai_analyzer.respond_to?(:call)
+
+      raise ArgumentError, "ai_analyzer must respond to call"
     end
 
     private_class_method def self.validate_max_input_length!(max_input_length)
@@ -376,12 +387,39 @@ module Olyx
     # @param checks [Array<Hash>]
     # @return [Float] a weighted heuristic score in `0.0..1.0`.
     private_class_method def self.compute_risk_score(pii:, injection:, secret:, checks:)
-      score  = 0.0
-      score += INJECTION_RISK_WEIGHT if injection
-      score += SECRET_RISK_WEIGHT    if secret
-      score += PII_RISK_WEIGHT       if pii
-      score += BLOCKED_RISK_WEIGHT   if checks.any? { |c| !c[:allowed] }
+      weighted_signals = [
+        [injection, INJECTION_RISK_WEIGHT],
+        [secret, SECRET_RISK_WEIGHT],
+        [pii, PII_RISK_WEIGHT]
+      ]
+      score = weighted_signals.sum { |detected, weight| detected ? weight : 0.0 }
+      score += BLOCKED_RISK_WEIGHT if checks.any? { |check| !check[:allowed] }
       score.clamp(0.0, 1.0).round(4)
+    end
+
+    private_class_method def self.build_check_result(checks, ai_result)
+      ordered_checks = CHECK_ORDER.map { |type| checks.fetch(type) }
+      result = {
+        allowed:           ordered_checks.all? { |check| check[:allowed] },
+        pii_detected:      checks[:pii][:detected],
+        injection_attempt: checks[:injection][:injection_attempt],
+        secret_leaked:     checks[:secret][:leaked],
+        risk_score:        combined_risk_score(checks, ordered_checks, ai_result),
+        checks:            ordered_checks
+      }
+      result[:ai_analysis] = ai_result if ai_result
+      result
+    end
+
+    private_class_method def self.combined_risk_score(checks, ordered_checks, ai_result)
+      checks_risk = compute_risk_score(
+        pii: checks[:pii][:detected],
+        injection: checks[:injection][:injection_attempt],
+        secret: checks[:secret][:leaked],
+        checks: ordered_checks
+      )
+      ai_risk = ai_result && coerce_risk_score(ai_result[:risk_score])
+      ai_risk ? [checks_risk, ai_risk].max.round(4) : checks_risk
     end
   end
 end
