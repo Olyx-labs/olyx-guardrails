@@ -44,5 +44,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      - name: Generate coverage data
+        run: COVERAGE=true bundle exec rake test
       - name: Enforce maintainability score
         run: bundle exec rubycritic
