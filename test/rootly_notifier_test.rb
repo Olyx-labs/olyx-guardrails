@@ -22,6 +22,19 @@ class RootlyNotifierTest < Minitest::Test
     }.merge(overrides)
   end
 
+  # Stubs post_incident to capture the payload it would have sent, instead of
+  # asserting on the real network response — used by every test below that
+  # cares about payload shape (title/summary/severity/labels) rather than
+  # delivery. Yields the notifier so the caller can drive whatever notify()
+  # call it needs.
+  def capture_payload(n = notifier)
+    sent = nil
+    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
+      yield n
+    end
+    sent
+  end
+
   def test_returns_nil_on_zero_risk_score
     result = notifier.notify({ allowed: true, risk_score: 0.0 })
     assert_nil result
@@ -37,91 +50,53 @@ class RootlyNotifierTest < Minitest::Test
   end
 
   def test_incident_title_includes_environment
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result)
-    end
+    sent = capture_payload { |n| n.notify(violation_result) }
     assert_includes sent.dig(:data, :attributes, :title), "[test]"
   end
 
   def test_incident_title_includes_violation_type
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result(injection_attempt: true))
-    end
+    sent = capture_payload { |n| n.notify(violation_result(injection_attempt: true)) }
     assert_includes sent.dig(:data, :attributes, :title), "injection"
   end
 
   def test_severity_sev1_for_high_risk
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result(risk_score: 0.9))
-    end
+    sent = capture_payload { |n| n.notify(violation_result(risk_score: 0.9)) }
     assert_equal "sev1", sent.dig(:data, :attributes, :severity_slug)
   end
 
   def test_severity_sev2_for_medium_risk
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result(risk_score: 0.6))
-    end
+    sent = capture_payload { |n| n.notify(violation_result(risk_score: 0.6)) }
     assert_equal "sev2", sent.dig(:data, :attributes, :severity_slug)
   end
 
   def test_severity_sev3_for_low_risk
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result(risk_score: 0.3))
-    end
+    sent = capture_payload { |n| n.notify(violation_result(risk_score: 0.3)) }
     assert_equal "sev3", sent.dig(:data, :attributes, :severity_slug)
   end
 
   def test_severity_sev4_for_minimal_risk
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result(risk_score: 0.1))
-    end
+    sent = capture_payload { |n| n.notify(violation_result(risk_score: 0.1)) }
     assert_equal "sev4", sent.dig(:data, :attributes, :severity_slug)
   end
 
   def test_summary_includes_risk_score
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result(risk_score: 0.75))
-    end
+    sent = capture_payload { |n| n.notify(violation_result(risk_score: 0.75)) }
     assert_includes sent.dig(:data, :attributes, :summary), "0.75"
   end
 
   def test_summary_includes_input_preview
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result, input: "some user input")
-    end
+    sent = capture_payload { |n| n.notify(violation_result, input: "some user input") }
     assert_includes sent.dig(:data, :attributes, :summary), "some user input"
   end
 
   def test_summary_includes_ai_reason
-    n      = notifier
-    sent   = nil
     result = violation_result.merge(ai_analysis: { reason: "paraphrased jailbreak" })
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(result)
-    end
+    sent   = capture_payload { |n| n.notify(result) }
     assert_includes sent.dig(:data, :attributes, :summary), "paraphrased jailbreak"
   end
 
   def test_summary_includes_metadata
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
+    sent = capture_payload do |n|
       n.notify(violation_result, metadata: { user_id: "42", endpoint: "/chat" })
     end
     summary = sent.dig(:data, :attributes, :summary)
@@ -130,11 +105,7 @@ class RootlyNotifierTest < Minitest::Test
   end
 
   def test_labels_include_ai_safety_and_gem_name
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result)
-    end
+    sent   = capture_payload { |n| n.notify(violation_result) }
     labels = sent.dig(:data, :attributes, :labels).map { |l| l[:name] }
     assert_includes labels, "ai-safety"
     assert_includes labels, "olyx-guardrails"
@@ -177,44 +148,28 @@ class RootlyNotifierTest < Minitest::Test
   end
 
   def test_secret_leaked_label
-    n    = notifier
-    sent = nil
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result(injection_attempt: false, secret_leaked: true))
-    end
+    sent = capture_payload { |n| n.notify(violation_result(injection_attempt: false, secret_leaked: true)) }
     assert_includes sent.dig(:data, :attributes, :title), "secret"
   end
 
   def test_input_preview_truncated_at_300_chars
-    n     = notifier
-    sent  = nil
-    long  = "a" * 400
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result, input: long)
-    end
+    long = "a" * 400
+    sent = capture_payload { |n| n.notify(violation_result, input: long) }
     assert_includes sent.dig(:data, :attributes, :summary), "…"
   end
 
   def test_input_preview_redacts_secret
-    n      = notifier
-    sent   = nil
     secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
     input  = "aws_secret_access_key = #{secret}"
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result, input: input)
-    end
+    sent   = capture_payload { |n| n.notify(violation_result, input: input) }
     summary = sent.dig(:data, :attributes, :summary)
     refute_includes summary, secret
     assert_includes summary, "[REDACTED]"
   end
 
   def test_input_preview_redacts_pii
-    n     = notifier
-    sent  = nil
     input = "contact me at victim@example.com about this"
-    n.stub(:post_incident, ->(payload) { sent = payload; { success: true } }) do
-      n.notify(violation_result, input: input)
-    end
+    sent  = capture_payload { |n| n.notify(violation_result, input: input) }
     summary = sent.dig(:data, :attributes, :summary)
     refute_includes summary, "victim@example.com"
     assert_includes summary, "[EMAIL]"

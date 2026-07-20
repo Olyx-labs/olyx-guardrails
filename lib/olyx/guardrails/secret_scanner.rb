@@ -59,6 +59,17 @@ module Olyx
         "custom_pattern" => 81
       }.freeze
 
+      # Findings that are just "pattern matched → record the whole match" with
+      # no extra logic — unlike confidentiality_marker (first-match-wins) and
+      # internal_endpoint (word-boundary expansion), which stay as explicit
+      # blocks in raw_findings since their behavior genuinely differs.
+      SIMPLE_FINDING_PATTERNS = {
+        "private_network_address" => PRIVATE_IP_IN_URL,
+        "aws_access_key"          => AWS_ACCESS_KEY,
+        "aws_secret_key"          => AWS_SECRET_KEY,
+        "secret_token"            => EXTRA_TOKEN_PREFIXES
+      }.freeze
+
       def self.baseline_scan(text)
         findings = raw_findings(text)
         { leaked: findings.any?, findings: findings.map { |f| display_finding(f) } }
@@ -112,20 +123,10 @@ module Olyx
           findings << { category: "internal_endpoint", full: t[word_start...m.end(0)] }
         end
 
-        if (m = PRIVATE_IP_IN_URL.match(t))
-          findings << { category: "private_network_address", full: m[0] }
-        end
-
-        if (m = AWS_ACCESS_KEY.match(t))
-          findings << { category: "aws_access_key", full: m[0] }
-        end
-
-        if (m = AWS_SECRET_KEY.match(t))
-          findings << { category: "aws_secret_key", full: m[0] }
-        end
-
-        if (m = EXTRA_TOKEN_PREFIXES.match(t))
-          findings << { category: "secret_token", full: m[0] }
+        SIMPLE_FINDING_PATTERNS.each do |category, pattern|
+          if (m = pattern.match(t))
+            findings << { category: category, full: m[0] }
+          end
         end
 
         findings

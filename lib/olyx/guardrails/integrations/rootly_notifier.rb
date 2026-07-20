@@ -20,7 +20,7 @@ module Olyx
         # straddles the truncation point still gets caught. The scrub window
         # is generous relative to any pattern's max length but still bounded,
         # so building a preview from a huge input stays cheap.
-        PREVIEW_LENGTH      = 300
+        PREVIEW_LENGTH       = 300
         PREVIEW_SCRUB_WINDOW = 2_000
 
         def initialize(api_key:, environment: nil)
