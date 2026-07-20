@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 # Uses the official OpenAI Ruby SDK's native structured-output schema models.
 #
 # Usage:
