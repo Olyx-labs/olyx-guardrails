@@ -27,11 +27,17 @@ module Olyx
         # so building a preview from a huge input stays cheap.
         PREVIEW_LENGTH       = 300
         PREVIEW_SCRUB_WINDOW = 2_000
+        SUMMARY_FIELD_LENGTH = 300
+        METADATA_KEY_LENGTH  = 50
 
         # @param api_key [String] Rootly API bearer token.
         # @param environment [String, nil] included in the incident title
         #   (e.g. `"production"`) when present.
         def initialize(api_key:, environment: nil)
+          unless api_key.is_a?(String) && !api_key.strip.empty?
+            raise ArgumentError, "api_key must be a non-empty String"
+          end
+
           @api_key     = api_key
           @environment = environment
         end
@@ -74,7 +80,8 @@ module Olyx
 
         def build_payload(result, input:, metadata:)
           violations = violation_labels(result)
-          env_tag    = @environment ? " [#{@environment}]" : ""
+          environment = sanitize_field(@environment, max_length: METADATA_KEY_LENGTH)
+          env_tag     = environment.empty? ? "" : " [#{environment}]"
 
           {
             data: {
@@ -109,12 +116,16 @@ module Olyx
           ]
 
           if (reason = result.dig(:ai_analysis, :reason))
-            lines << "**AI analysis:** #{reason}"
+            lines << "**AI analysis:** #{sanitize_field(reason)}"
           end
 
           lines << "**Input preview:** #{redacted_preview(input)}" if input
 
-          metadata.each { |k, v| lines << "**#{k}:** #{v}" }
+          metadata.each do |key, value|
+            safe_key   = sanitize_metadata_key(key)
+            safe_value = sanitize_field(value)
+            lines << "**#{safe_key}:** #{safe_value}"
+          end
 
           lines.join("\n")
         end
@@ -125,7 +136,7 @@ module Olyx
         def redacted_preview(input)
           raw       = input.to_s[0...PREVIEW_SCRUB_WINDOW]
           scrubbed  = PiiScrubber.scrub(raw)
-          scrubbed  = SecretScanner.scan(scrubbed, secret_action: "redact")[:text]
+          scrubbed  = SecretScanner.redact(scrubbed)[:text]
           truncated = scrubbed[0...PREVIEW_LENGTH]
           truncated += "…" if scrubbed.length > PREVIEW_LENGTH || input.to_s.length > PREVIEW_SCRUB_WINDOW
           truncated
@@ -133,6 +144,18 @@ module Olyx
 
         def severity_for(score)
           SEVERITY_MAP.find { |threshold, _| score >= threshold }&.last || "sev4"
+        end
+
+        def sanitize_field(value, max_length: SUMMARY_FIELD_LENGTH)
+          raw      = value.to_s[0...PREVIEW_SCRUB_WINDOW]
+          scrubbed = PiiScrubber.scrub(raw)
+          scrubbed = SecretScanner.redact(scrubbed)[:text]
+          scrubbed.gsub(/[\r\n\t]+/, " ")[0...max_length]
+        end
+
+        def sanitize_metadata_key(key)
+          normalized = key.to_s.gsub(/[^A-Za-z0-9_.-]/, "_")[0...METADATA_KEY_LENGTH]
+          normalized.empty? ? "metadata" : normalized
         end
 
         def post_incident(payload)
@@ -149,10 +172,11 @@ module Olyx
           req.body             = JSON.generate(payload)
 
           response = http.request(req)
+          status   = response.code.to_i
 
           {
-            success:     response.code.to_i < 300,
-            status:      response.code.to_i,
+            success:     status.between?(200, 299),
+            status:      status,
             incident_id: parse_incident_id(response)
           }
         rescue => e
@@ -161,7 +185,7 @@ module Olyx
 
         def parse_incident_id(response)
           JSON.parse(response.body).dig("data", "id")
-        rescue
+        rescue StandardError
           nil
         end
       end

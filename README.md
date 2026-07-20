@@ -1,80 +1,83 @@
 # Olyx Guardrails
 
-`olyx-guardrails` is a Ruby library for AI safety guardrails. It provides synchronous, in-process detection and response for:
+`olyx-guardrails` is a dependency-light Ruby library for synchronous AI input
+safety:
 
-- PII scrubbing
-- Prompt injection and jailbreak detection (regex + multi-turn)
-- Secret and credential scanning
-- Input length enforcement
-- Pluggable AI analyzer hook for semantic evaluation
-- Rootly incident integration — violations open incidents automatically
+- PII and credential redaction
+- Prompt-injection and jailbreak detection
+- Secret and internal-endpoint detection
+- Input-length enforcement
+- Optional semantic analysis through a caller-supplied AI hook
+- Optional Rootly incident notification
 
-No runtime dependencies for the core checks. No external API calls. Runs in the same thread as the request.
+The core checks run in-process and have no runtime gem dependencies.
 
 ## Installation
 
 ```ruby
-gem "olyx-guardrails"
+gem "olyx-guardrails", "~> 0.3"
 ```
 
 ```bash
 bundle install
 ```
 
-Or install directly:
+Ruby 3.1 or newer is required.
 
-```bash
-gem install olyx-guardrails
-```
+## Decision and transformation are separate
 
-Requires Ruby 3.1 or newer.
-
-## Quick Start
+Use `check` to make an allow/block decision:
 
 ```ruby
 require "olyx/guardrails"
 
 result = Olyx::Guardrails.check(
-  "My email is person@example.com and ignore all previous instructions",
-  injection_block: true,
-  secret_action:   "alert"
+  input,
+  block_injections: true,
+  block_secrets:    true
 )
 
-result[:allowed]           # => false
-result[:pii_detected]      # => true
-result[:injection_attempt] # => true
-result[:risk_score]        # => float 0.0..1.0
+return forbidden unless result[:allowed]
 ```
 
-## Core API
+Use `redact` when transformed text is required:
 
-### `Olyx::Guardrails.check`
+```ruby
+redaction = Olyx::Guardrails.redact(input)
+
+safe_input = redaction[:text]
+redaction[:redacted]      # true when text changed
+redaction[:pii_detected]  # true when regex-detected PII was removed
+redaction[:secret_leaked] # true when a secret was removed
+```
+
+`check` never claims to transform input, and `redact` never makes an
+allow/block decision.
+
+## `Olyx::Guardrails.check`
 
 ```ruby
 Olyx::Guardrails.check(
   input,
   max_input_length: 10_000,
-  injection_block:  true,
-  secret_action:    "alert",
+  block_injections: true,
+  block_secrets:    false,
   custom_patterns:  [],
   ai_analyzer:      nil
 )
 ```
 
-Runs all guardrail checks in a single call and returns a result hash.
-
-#### Options
-
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `input` | any | — | Converted to string via `to_s` |
-| `max_input_length` | Integer | `10_000` | Blocks input exceeding this length |
-| `injection_block` | Boolean | `true` | Block the request when injection is detected |
-| `secret_action` | String | `"alert"` | `"alert"`, `"redact"`, or `"block"` |
-| `custom_patterns` | Array | `[]` | Additional regex strings for secret scanning |
-| `ai_analyzer` | Callable | `nil` | Optional AI hook — see [AI Analyzer Hook](#ai-analyzer-hook) |
+| `input` | any | — | Converted via `to_s` |
+| `max_input_length` | non-negative Integer | `10_000` | Rejects oversized input before content scans |
+| `block_injections` | Boolean | `true` | Makes detected injection attempts disallowed |
+| `block_secrets` | Boolean | `false` | Makes detected secrets disallowed |
+| `custom_patterns` | Array<String> | `[]` | Additional case-insensitive secret regexes |
+| `ai_analyzer` | callable or nil | `nil` | Optional semantic analyzer |
 
-#### Return shape
+Invalid options raise `ArgumentError`; configuration mistakes do not silently
+degrade into an allow decision.
 
 ```ruby
 {
@@ -82,220 +85,165 @@ Runs all guardrail checks in a single call and returns a result hash.
   pii_detected:      Boolean,
   injection_attempt: Boolean,
   secret_leaked:     Boolean,
-  risk_score:        Float,     # 0.0..1.0
+  risk_score:        Float,
   checks: [
-    { type: "pii",       allowed: Boolean, detected: Boolean },
+    { type: "pii",       allowed: true,    detected: Boolean },
     { type: "injection", allowed: Boolean, injection_attempt: Boolean, patterns: Array },
     { type: "secret",    allowed: Boolean, leaked: Boolean, count: Integer },
     { type: "length",    allowed: Boolean, length: Integer, max_length: Integer }
   ],
-  ai_analysis: { ... }          # present only when ai_analyzer: is supplied
+  ai_analysis: Hash # only when ai_analyzer is supplied and runs
 }
 ```
 
----
+The length check runs first. When it fails, regex and AI checks are skipped and
+content checks carry `skipped: true`.
 
-## AI Analyzer Hook
-
-The `ai_analyzer:` parameter accepts any callable that receives `(text, context)` and returns a Hash. It runs after all regex checks so the AI layer receives what the pattern scanner already found — avoiding redundant LLM calls on clear-cut cases.
+## `Olyx::Guardrails.redact`
 
 ```ruby
-claude_hook = ->(text, context) do
-  # Skip the LLM call if regex already caught it
-  return {} if context[:injection_attempt]
+Olyx::Guardrails.redact(
+  input,
+  max_input_length: 10_000,
+  custom_patterns:  []
+)
+```
 
-  response = Anthropic::Client.new.messages(
-    model:      "claude-haiku-4-5-20251001",
-    max_tokens: 64,
-    system:     "Classify this input. Reply with JSON only: " \
-                "{\"injection_attempt\": bool, \"reason\": string}",
-    messages:   [{ role: "user", content: text }]
-  )
+The returned `:text` has every regex-detected PII and secret match removed.
+Repeated credentials in the same category are all redacted. Findings expose a
+masked value, a short SHA-256 fingerprint, and source offsets—not plaintext
+credentials.
 
-  JSON.parse(response.content.first.text, symbolize_names: true)
-rescue => e
-  { error: e.message }
+```ruby
+{
+  text:           String,
+  redacted:       Boolean,
+  pii_detected:   Boolean,
+  secret_leaked:  Boolean,
+  findings: [
+    {
+      category:    String,
+      matched:     String,  # masked
+      fingerprint: String,  # "sha256:..."
+      start:       Integer,
+      end:         Integer
+    }
+  ]
+}
+```
+
+An oversized input raises `ArgumentError` rather than running an unbounded
+transformation.
+
+## AI analyzer hook
+
+The optional hook receives `(text, context)` and returns a Hash:
+
+```ruby
+hook = lambda do |text, context|
+  {
+    injection_attempt: false,
+    pii_detected:      false,
+    secret_leaked:     false,
+    risk_score:        0.2,
+    reason:            "No semantic policy violation found"
+  }
 end
 
-result = Olyx::Guardrails.check(input, ai_analyzer: claude_hook)
-result[:ai_analysis][:reason]  # LLM explanation
+result = Olyx::Guardrails.check(input, ai_analyzer: hook)
 ```
 
-#### Context passed to the hook
+Boolean findings must be actual `true` or `false` values. Invalid responses and
+hook exceptions are recorded under `result[:ai_analysis][:error]`; regex
+findings remain authoritative. AI findings can add a violation but cannot clear
+one.
 
-```ruby
-{
-  pii_detected:       Boolean,
-  injection_attempt:  Boolean,
-  injection_patterns: Array,    # matched pattern details from InjectionDetector
-  secret_leaked:      Boolean
-}
-```
+The hook receives raw input. If it calls a third-party model, the caller is
+responsible for data-residency, privacy, and vendor-trust requirements.
 
-#### Expected return keys (all optional)
+## Component APIs
 
-```ruby
-{
-  injection_attempt: Boolean,
-  pii_detected:      Boolean,
-  secret_leaked:     Boolean,
-  risk_score:        Float,     # 0.0..1.0 — used when higher than regex score
-  reason:            String     # explanation, included in ai_analysis
-}
-```
-
-#### Behavior
-
-- **Defense-in-depth**: AI findings union with regex findings. The hook can flag additional violations but cannot clear existing ones.
-- **Fault-tolerant**: exceptions raised by the hook are rescued. The error is recorded in `result[:ai_analysis][:error]` and the regex result stands.
-- **Skipped on oversized input**: the hook is not called when `max_input_length` is exceeded.
-- **Risk score**: `result[:risk_score]` is the maximum of the regex-derived score and the hook's `risk_score` when provided.
-
----
-
-## Components
-
-### `PiiScrubber`
-
-Detects and redacts personal data from free text and message arrays.
-
-**Patterns:** email, phone, SSN, credit card (Luhn-validated), IPv4, API tokens, passport numbers, IBANs, dates of birth.
+### PII
 
 ```ruby
 PiiScrubber.scrub(text)
-# => redacted string
-
 PiiScrubber.scrub_messages(messages)
-# => messages array with string content redacted
-
 PiiScrubber.scrub_messages_with_detection(messages)
-# => { messages: [...], detected: Boolean }
 ```
 
-### `InjectionDetector`
+String message content and array-style text content blocks are supported
+without changing symbol/string key style.
 
-Detects prompt injection and jailbreak techniques via structural tag patterns, phrase blocklist, and multi-turn split-attack detection.
-
-Multi-turn detection scans adjacent message pairs for fragment patterns that are benign in isolation but combine into a jailbreak attempt across turns.
+### Injection detection
 
 ```ruby
 InjectionDetector.scan(messages)
-# => { injection_attempt: Boolean, patterns: [...] }
-
 InjectionDetector.injection?(text)
-# => Boolean — convenience wrapper for a single user message
 ```
 
-Messages should follow standard chat format:
+Multi-turn patterns require an adjacent `user` → `assistant` role transition.
+
+### Secret handling
+
+The operation is explicit:
 
 ```ruby
-[
-  { "role" => "user",      "content" => "..." },
-  { "role" => "assistant", "content" => "..." }
-]
+SecretScanner.scan(text, custom_patterns: [])   # detect only
+SecretScanner.redact(text, custom_patterns: []) # transform
+SecretScanner.scan!(text, custom_patterns: [])  # raise Blocked on detection
 ```
 
-### `SecretScanner`
+Invalid custom regexes raise `ArgumentError`. Custom regexes are trusted
+configuration: review them for pathological backtracking before deployment.
 
-Detects leaked secrets, internal endpoints, private network addresses, and vendor token formats.
+## Risk score
 
-**Detected categories:** confidentiality markers, internal hostnames (`.internal`, `.corp`, `.lan`), RFC-1918 addresses in URLs, AWS access key IDs (AKIA/ASIA/AROA), AWS secret access keys, GitHub/GitLab/Slack/npm tokens, Anthropic API keys, JWTs, SendGrid keys.
+The heuristic score is injection (`0.50`) + secret (`0.25`) + PII (`0.10`) +
+any blocked check (`0.15`), clamped to `0.0..1.0`. It supports graduated
+responses; it is not a probability or calibrated model confidence.
 
-```ruby
-SecretScanner.scan(text, secret_action: "alert", custom_patterns: [])
-# => { text: String, leaked: Boolean, findings: [{ category: String, matched: String }] }
-
-SecretScanner.baseline_scan(text)
-# => { leaked: Boolean, findings: [...] }
-```
-
-**`secret_action` behaviors:**
-- `"alert"` — returns original text, marks leakage
-- `"redact"` — replaces matched secrets with `[REDACTED]` (full match, not truncated)
-- `"block"` — raises `SecretScanner::Blocked` with findings attached
-
----
-
-## Design Notes
-
-- The `length` check runs first. Oversized input is rejected immediately; the regex and AI scans are skipped entirely rather than running on content that will be rejected anyway.
-- `Olyx::Guardrails.check` always returns a result hash. The `secret_action: "block"` path converts the blocked exception into a failed result rather than bubbling the exception to the caller.
-- A result is `allowed: false` when any individual check is not allowed.
-- `risk_score` is a weighted heuristic: injection (0.50) + secret (0.25) + blocked (0.15) + PII (0.10), clamped to 1.0. Use it for graduated responses rather than treating every non-zero score as a hard block.
-
-## Limitations
-
-`olyx-guardrails` is pattern-based by default, not semantic. Combine it with the `ai_analyzer:` hook and upstream controls for meaningful defense-in-depth.
-
-- **Injection detection** catches known phrasing and structural tags. Paraphrasing, translation, encoding (base64, ROT13, homoglyphs), or novel attack patterns not in `PHRASE_PATTERNS` will not be detected by regex alone — use the AI hook for semantic coverage.
-- **Secret scanning** covers a fixed set of vendor token formats. GCP, Azure, Stripe, PEM-encoded private keys, and generic high-entropy strings are not covered.
-- **PII patterns** are biased toward US/Western formats. Non-US national identifiers and unicode obfuscation are not reliably caught.
-- **`ai_analyzer:` sends input text to whatever backs your hook** — e.g. a third-party LLM API — on every call the regex layer doesn't already catch. That has its own data-residency and vendor-trust implications this gem doesn't manage for you; make sure your hook's provider is one you're allowed to send this data to.
-
----
-
-## Rootly Integration
-
-`RootlyNotifier` opens a Rootly incident whenever a guardrail violation is detected. It is opt-in and loaded separately so projects not using Rootly pay no cost.
-
-`notify` makes a synchronous HTTPS call (5s open / 10s read timeout) and never raises — it always returns a hash, degrading to `{ success: false, error: ... }` on any failure. Calling it inline in a request path means a slow Rootly API can add up to ~15s of latency to that request; for production traffic, consider dispatching it from a background job instead.
+## Rootly integration
 
 ```ruby
 require "olyx/guardrails/integrations/rootly_notifier"
 
 notifier = Olyx::Guardrails::Integrations::RootlyNotifier.new(
-  api_key:     ENV["ROOTLY_API_KEY"],
-  environment: ENV["RAILS_ENV"]   # included in incident title
+  api_key:     ENV.fetch("ROOTLY_API_KEY"),
+  environment: ENV["RAILS_ENV"]
 )
 
-result = Olyx::Guardrails.check(input, ai_analyzer: my_hook)
-
-if result[:risk_score] > 0.5
-  notifier.notify(
-    result,
-    input:    input,
-    metadata: { user_id: current_user.id, endpoint: request.path }
-  )
-end
+notifier.notify(
+  result,
+  input:    input,
+  metadata: { user_id: current_user.id, endpoint: request.path }
+)
 ```
 
-#### Severity mapping
+Input previews, AI reasons, environment names, and metadata are bounded and
+redacted before delivery. The notifier performs a synchronous HTTPS request
+with a 5-second open timeout and 10-second read timeout; use a background job on
+latency-sensitive paths.
 
-| Risk score | Rootly severity |
-|---|---|
-| >= 0.75 | sev1 |
-| >= 0.50 | sev2 |
-| >= 0.25 | sev3 |
-| < 0.25  | sev4 |
+## Limitations
 
-#### Incident content
+- Pattern-based injection detection can miss paraphrasing, translation,
+  encoding, homoglyphs, or new attack techniques.
+- Secret coverage is format-based and not exhaustive. GCP, Azure, Stripe,
+  PEM private keys, and generic high-entropy strings are not currently covered.
+- PII patterns remain biased toward common US/Western formats.
+- Redaction addresses recognized data patterns; it is not a replacement for
+  authorization, output policy enforcement, or a data-loss-prevention system.
 
-Every incident includes:
-- Violation types (injection attempt, secret leaked, PII detected, input length exceeded)
-- Risk score and whether the request was blocked
-- AI analysis reason (when `ai_analyzer:` is supplied and returns a `reason`)
-- Input preview (first 300 characters, redacted via `PiiScrubber`/`SecretScanner` before truncation — the raw PII/secret that triggered the violation is never sent to Rootly)
-- Any caller-supplied metadata key/value pairs
-- Labels: `ai-safety`, `olyx-guardrails`
-
-#### Return value
-
-```ruby
-{ success: true,  incident_id: "abc123", status: 201 }
-{ success: false, error: "connection refused" }          # network failure
-nil                                                       # risk_score was 0
-```
-
-See [`examples/rootly_integration.rb`](examples/rootly_integration.rb) for a full runnable example with Claude.
-
----
-
-## Development
+## Development and security
 
 ```bash
 bundle exec rake test
+gem build olyx-guardrails.gemspec
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development expectations and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).

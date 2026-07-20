@@ -12,10 +12,9 @@ module Olyx
     #   Limitations section.
     class PiiScrubber
       EMAIL_PATTERN    = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/
-      # Digit lookaround at both ends (unlike the other patterns, this had no
-      # boundary at all) so the match can't land on an arbitrary substring of
-      # a longer digit run. \b doesn't work here since it drops a leading "+".
-      PHONE_PATTERN    = /(?<!\d)\+?(?:\d[\s\-.]?){7,15}\d(?!\d)/
+      # Require either an international "+" prefix or conventional separators;
+      # bare numeric identifiers must not be destroyed as alleged phone data.
+      PHONE_PATTERN    = /(?<!\d)(?:\+\d(?:[\s\-.]?\d){7,15}|\(?\d{3}\)?[\s\-.]\d{3}[\s\-.]\d{4})(?!\d)/
       SSN_PATTERN      = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/
       # Anchored on a mandatory trailing digit (not a separator) so the match
       # can't absorb a trailing space/hyphen that belongs to surrounding text.
@@ -49,11 +48,11 @@ module Olyx
       # special-casing any one pattern in `scrub`.
       PATTERNS = [
         [ EMAIL_PATTERN,    "[EMAIL]"    ],
-        [ SSN_PATTERN,      "[SSN]"      ],
+        [ SSN_PATTERN,      "[SSN]",      ->(match) { ssn_valid?(match) } ],
         [ PASSPORT_PATTERN, "[PASSPORT]" ],
-        [ IBAN_PATTERN,     "[IBAN]"     ],
+        [ IBAN_PATTERN,     "[IBAN]",     ->(match) { iban_valid?(match) } ],
         [ DOB_PATTERN,      "[DOB]"      ],
-        [ IPV4_PATTERN,     "[IP]"       ],
+        [ IPV4_PATTERN,     "[IP]",       ->(match) { ipv4_valid?(match) } ],
         [ TOKEN_PATTERN,    "[TOKEN]"    ],
         [ CARD_PATTERN,     "[CARD]",    ->(match) { luhn_valid?(match) } ],
         [ PHONE_PATTERN,    "[PHONE]"    ]
@@ -98,6 +97,34 @@ module Olyx
       end
       private_class_method :luhn_valid?
 
+      # Rejects structurally impossible U.S. SSNs.
+      private_class_method def self.ssn_valid?(ssn)
+        area, group, serial = ssn.split(/[- ]/)
+        return false unless area && group && serial
+        !area.match?(/\A(?:000|666|9\d{2})\z/) && group != "00" && serial != "0000"
+      end
+
+      # Validates every IPv4 octet instead of accepting values such as
+      # 999.999.999.999.
+      private_class_method def self.ipv4_valid?(address)
+        octets = address.split(".")
+        octets.length == 4 && octets.all? { |octet| octet.to_i.between?(0, 255) }
+      end
+
+      # ISO 13616 mod-97 validation for IBAN candidates.
+      private_class_method def self.iban_valid?(iban)
+        compact = iban.delete(" ").upcase
+        return false unless compact.match?(/\A[A-Z]{2}\d{2}[A-Z0-9]{11,30}\z/)
+        return false unless compact.length.between?(15, 34)
+
+        rearranged = compact[4..] + compact[0, 4]
+        remainder = rearranged.each_char.reduce(0) do |value, char|
+          digits = char.match?(/[A-Z]/) ? (char.ord - 55).to_s : char
+          digits.each_char.reduce(value) { |memo, digit| ((memo * 10) + digit.to_i) % 97 }
+        end
+        remainder == 1
+      end
+
       # @param messages [Array<Hash>] chat-style messages with `"content"`
       #   or `:content` keys.
       # @return [Array<Hash>] `messages` with String content redacted via
@@ -111,19 +138,44 @@ module Olyx
       # @return [Hash] `:messages` (Array, redacted like {scrub_messages})
       #   and `:detected` (Boolean, whether any redaction occurred).
       def self.scrub_messages_with_detection(messages)
+        unless messages.is_a?(Array) && messages.all? { |message| message.is_a?(Hash) }
+          raise ArgumentError, "messages must be an Array of Hash values"
+        end
+
         detected = false
-
         scrubbed = messages.map do |msg|
-          content = msg["content"] || msg[:content]
-          next msg unless content.is_a?(String)
+          content_key = msg.key?("content") ? "content" : (msg.key?(:content) ? :content : nil)
+          next msg unless content_key
 
-          redacted = scrub(content)
-          detected = true if redacted != content
-
-          msg.merge("content" => redacted).tap { |m| m.delete(:content) }
+          redacted, content_detected = scrub_content(msg[content_key])
+          detected ||= content_detected
+          content_detected ? msg.merge(content_key => redacted) : msg
         end
 
         { messages: scrubbed, detected: detected }
+      end
+
+      private_class_method def self.scrub_content(content)
+        case content
+        when String
+          redacted = scrub(content)
+          [redacted, redacted != content]
+        when Array
+          detected = false
+          blocks = content.map do |block|
+            next block unless block.is_a?(Hash)
+            text_key = block.key?("text") ? "text" : (block.key?(:text) ? :text : nil)
+            next block unless text_key && block[text_key].is_a?(String)
+
+            redacted = scrub(block[text_key])
+            changed  = redacted != block[text_key]
+            detected ||= changed
+            changed ? block.merge(text_key => redacted) : block
+          end
+          [blocks, detected]
+        else
+          [content, false]
+        end
       end
     end
   end

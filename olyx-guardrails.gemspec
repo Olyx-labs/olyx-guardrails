@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "lib/olyx/guardrails/version"
+
 Gem::Specification.new do |s|
   s.name        = "olyx-guardrails"
-  s.version     = "0.2.0"
+  s.version     = Olyx::Guardrails::VERSION
   s.summary     = "AI governance guardrails for Ruby: PII scrubbing, injection detection, secret scanning, and Rootly incident integration."
   s.description = "Standalone Ruby library for AI input safety. Detects and redacts PII, " \
                   "identifies prompt injection attacks (including multi-turn patterns), scans for " \
@@ -16,11 +18,14 @@ Gem::Specification.new do |s|
   s.metadata    = {
     "source_code_uri"        => "https://github.com/mosesnjoroge/olyx-guardrails",
     "changelog_uri"          => "https://github.com/mosesnjoroge/olyx-guardrails/blob/master/CHANGELOG.md",
+    "documentation_uri"      => "https://github.com/mosesnjoroge/olyx-guardrails/blob/master/docs/API.md",
     "bug_tracker_uri"        => "https://github.com/mosesnjoroge/olyx-guardrails/issues",
+    "allowed_push_host"      => "https://rubygems.org",
     "rubygems_mfa_required"  => "true"
   }
 
-  s.files         = Dir["lib/**/*.rb"] + Dir["examples/*.rb"] + %w[LICENSE README.md CHANGELOG.md]
+  s.files         = Dir["lib/**/*.rb"] + Dir["examples/*.rb"] + Dir["docs/*.md"] +
+                    %w[LICENSE README.md CHANGELOG.md SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md]
   s.require_paths = ["lib"]
 
   s.required_ruby_version = ">= 3.1"

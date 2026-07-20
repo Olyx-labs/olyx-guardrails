@@ -3,6 +3,46 @@
 All notable changes to olyx-guardrails are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-07-20
+
+### Breaking
+- Replaced `injection_block:` with `block_injections:` and
+  `secret_action:` with the Boolean `block_secrets:` on
+  `Olyx::Guardrails.check`.
+- Split secret handling into explicit `SecretScanner.scan` (detect),
+  `SecretScanner.redact` (transform), and `SecretScanner.scan!` (raise)
+  operations. Removed `baseline_scan` and the ambiguous action switch.
+- Added `Olyx::Guardrails.redact` as the distinct, safe-to-forward
+  transformation API for PII and secrets.
+- Secret findings now expose masked values, fingerprints, and offsets rather
+  than plaintext or truncated credential material.
+- Invalid options and invalid custom regular expressions now raise
+  `ArgumentError` instead of silently degrading.
+
+### Security
+- Redaction now enumerates every occurrence, including repeated secrets from
+  the same category and repeated custom-pattern matches.
+- Rootly sanitizes and bounds AI reasons, metadata, environment values, and
+  input previews before sending them to the third-party API.
+- A confidentiality marker now redacts the complete input because removing
+  only the marker would leave the marked confidential content intact.
+- AI finding fields require actual Boolean values rather than Ruby truthiness.
+
+### Fixed
+- PII message scrubbing now handles array-style text content blocks and
+  preserves symbol/string key style.
+- Multi-turn injection rules now require the documented adjacent
+  `user` → `assistant` role transition.
+- IPv4, SSN, and IBAN candidates receive structural validation, and bare
+  numeric identifiers are no longer treated as phone numbers.
+
+### Changed
+- Gem version now has one source of truth in `version.rb`.
+- CI uses least privilege, immutable action SHAs, and the full supported Ruby
+  matrix.
+- Added public security, contribution, conduct, ownership, dependency-update,
+  and repository hygiene configuration.
+
 ## [0.2.0] - 2026-07-16
 
 ### Changed

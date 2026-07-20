@@ -176,4 +176,43 @@ class RootlyNotifierTest < Minitest::Test
     refute_includes summary, "victim@example.com"
     assert_includes summary, "[EMAIL]"
   end
+
+  def test_input_preview_redacts_every_repeated_secret
+    first  = "ghp_#{'a' * 36}"
+    second = "ghp_#{'b' * 36}"
+    sent = capture_payload { |n| n.notify(violation_result, input: "#{first} #{second}") }
+    summary = sent.dig(:data, :attributes, :summary)
+
+    refute_includes summary, first
+    refute_includes summary, second
+    assert_equal 2, summary.scan("[REDACTED]").length
+  end
+
+  def test_ai_reason_is_redacted_before_delivery
+    secret = "ghp_#{'r' * 36}"
+    result = violation_result.merge(ai_analysis: { reason: "detected #{secret}" })
+    sent   = capture_payload { |n| n.notify(result) }
+    summary = sent.dig(:data, :attributes, :summary)
+
+    refute_includes summary, secret
+    assert_includes summary, "[REDACTED]"
+  end
+
+  def test_metadata_is_sanitized_before_delivery
+    secret = "ghp_#{'m' * 36}"
+    sent = capture_payload do |n|
+      n.notify(violation_result, metadata: { "unsafe\nkey" => "detected #{secret}" })
+    end
+    summary = sent.dig(:data, :attributes, :summary)
+
+    refute_includes summary, secret
+    assert_includes summary, "**unsafe_key:**"
+    assert_includes summary, "[REDACTED]"
+  end
+
+  def test_initializer_rejects_empty_api_key
+    assert_raises(ArgumentError) do
+      Olyx::Guardrails::Integrations::RootlyNotifier.new(api_key: "")
+    end
+  end
 end

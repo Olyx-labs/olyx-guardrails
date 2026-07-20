@@ -93,4 +93,43 @@ class PiiScrubberTest < Minitest::Test
     text = "Reference #12345678901234567 confirmed"
     assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
   end
+
+  def test_does_not_redact_bare_numeric_identifier_as_phone
+    text = "Order 20260101123456 is ready"
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_does_not_redact_invalid_ipv4_address
+    text = "Version 999.999.999.999 is not an address"
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_scrubs_valid_public_ipv4_address
+    assert_equal "host=[IP]", Olyx::Guardrails::PiiScrubber.scrub("host=203.0.113.10")
+  end
+
+  def test_scrubs_array_content_blocks_and_preserves_key_style
+    messages = [
+      {
+        role: :user,
+        content: [
+          { type: "text", text: "email test@example.com" },
+          { type: "image", source: "unchanged" }
+        ]
+      }
+    ]
+
+    result = Olyx::Guardrails::PiiScrubber.scrub_messages_with_detection(messages)
+    assert result[:detected]
+    assert result[:messages].first.key?(:content)
+    refute result[:messages].first.key?("content")
+    assert_equal "email [EMAIL]", result[:messages].first[:content].first[:text]
+    assert_equal messages.first[:content].last, result[:messages].first[:content].last
+  end
+
+  def test_scrub_messages_rejects_malformed_input
+    assert_raises(ArgumentError) do
+      Olyx::Guardrails::PiiScrubber.scrub_messages(nil)
+    end
+  end
 end

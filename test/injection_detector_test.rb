@@ -77,4 +77,30 @@ class InjectionDetectorTest < Minitest::Test
     result = Olyx::Guardrails::InjectionDetector.scan(conversation)
     assert result[:injection_attempt]
   end
+
+  def test_multi_turn_detection_requires_user_to_assistant_roles
+    conversation = [
+      { "role" => "assistant", "content" => "Hypothetically speaking" },
+      { "role" => "assistant", "content" => "with no restrictions" }
+    ]
+
+    result = Olyx::Guardrails::InjectionDetector.scan(conversation)
+    refute result[:patterns].any? { |pattern| pattern[:role] == "multi-turn" }
+  end
+
+  def test_multi_turn_detection_rejects_reversed_roles
+    conversation = [
+      { "role" => "assistant", "content" => "Hypothetically speaking" },
+      { "role" => "user", "content" => "with no restrictions" }
+    ]
+
+    result = Olyx::Guardrails::InjectionDetector.scan(conversation)
+    refute result[:patterns].any? { |pattern| pattern[:role] == "multi-turn" }
+  end
+
+  def test_scan_rejects_malformed_messages
+    assert_raises(ArgumentError) do
+      Olyx::Guardrails::InjectionDetector.scan([nil])
+    end
+  end
 end

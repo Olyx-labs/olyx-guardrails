@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+
 module Olyx
   module Guardrails
     # Detects leaked secrets, internal endpoints, private network
@@ -11,9 +13,8 @@ module Olyx
     #   PEM-encoded private keys, and generic high-entropy strings are not
     #   covered. See the README Limitations section.
     class SecretScanner
-      # Raised by {scan} when `secret_action: "block"` and a secret is
-      # found. Carries the same `findings` shape {scan} would otherwise
-      # return.
+      # Raised by {scan!} when a secret is found. Carries the same safe,
+      # masked `findings` shape {scan} returns.
       class Blocked < StandardError
         attr_reader :findings
 
@@ -64,19 +65,6 @@ module Olyx
         \bkey-\S+
       /xi.freeze
 
-      # Categories whose full match is longer than what's safe to surface in
-      # findings/logs get truncated for display — but redaction always acts on
-      # the untruncated value tracked internally, never the display string.
-      DISPLAY_TRUNCATE_AT = {
-        "aws_secret_key" => 25,
-        "secret_token"   => 40,
-        "custom_pattern" => 81
-      }.freeze
-
-      # Findings that are just "pattern matched → record the whole match" with
-      # no extra logic — unlike confidentiality_marker (first-match-wins) and
-      # internal_endpoint (word-boundary expansion), which stay as explicit
-      # blocks in raw_findings since their behavior genuinely differs.
       SIMPLE_FINDING_PATTERNS = {
         "private_network_address" => PRIVATE_IP_IN_URL,
         "aws_access_key"          => AWS_ACCESS_KEY,
@@ -84,107 +72,151 @@ module Olyx
         "secret_token"            => EXTRA_TOKEN_PREFIXES
       }.freeze
 
-      # Runs only the built-in detection patterns — no custom patterns, no
-      # redaction/blocking side effects.
+      # Detects secrets without modifying input or raising.
       #
       # @param text [#to_s] the text to scan.
-      # @return [Hash] `:leaked` (Boolean) and `:findings` (Array of
-      #   `{ category:, matched: }` Hashes).
-      def self.baseline_scan(text)
-        findings = raw_findings(text)
-        { leaked: findings.any?, findings: findings.map { |f| display_finding(f) } }
-      end
-
-      # Standalone scan — no Rails deps. For project-aware scanning with
-      # custom patterns, use SecretLeakageScanner in olyx-api which wraps this.
-      #
-      # @param text [#to_s] the text to scan.
-      # @param secret_action ["alert", "redact", "block"] `"alert"` returns
-      #   the original text and marks leakage; `"redact"` replaces matched
-      #   secrets with `[REDACTED]`; `"block"` raises {Blocked}.
       # @param custom_patterns [Array<String>] extra regex strings, compiled
-      #   case-insensitively. Invalid patterns are silently skipped.
-      # @return [Hash] `:text` (String, possibly redacted), `:leaked`
-      #   (Boolean), and `:findings` (Array of `{ category:, matched: }`
-      #   Hashes).
-      # @raise [Blocked] when `secret_action: "block"` and a secret is found.
-      def self.scan(text, secret_action: "alert", custom_patterns: [])
-        findings = raw_findings(text.to_s)
-
-        custom_patterns.each do |pattern_str|
-          re = Regexp.new(pattern_str, Regexp::IGNORECASE)
-          m  = re.match(text.to_s)
-          next unless m
-          findings << { category: "custom_pattern", full: m[0].to_s }
-        rescue RegexpError
-          next
-        end
-
-        leaked      = findings.any?
-        output_text = text.to_s
-
-        if leaked
-          case secret_action
-          when "redact"
-            output_text = apply_redactions(output_text, findings)
-          when "block"
-            raise Blocked.new(findings.map { |f| display_finding(f) })
-          end
-        end
-
-        { text: output_text, leaked: leaked, findings: findings.map { |f| display_finding(f) } }
+      #   case-insensitively. Invalid patterns raise `ArgumentError`.
+      # @return [Hash] `:leaked` and safe, masked `:findings`.
+      def self.scan(text, custom_patterns: [])
+        source   = text.to_s
+        findings = raw_findings(source, custom_patterns: custom_patterns)
+        { leaked: findings.any?, findings: findings.map { |finding| public_finding(finding) } }
       end
 
-      # Detection pass shared by baseline_scan and scan — every finding carries
-      # the full, untruncated match under :full so redaction is always exact.
+      # Detects and redacts every match. When a confidentiality marker is the
+      # only evidence available, the whole input is redacted rather than
+      # returning marked confidential content with just its label removed.
+      #
+      # @param text [#to_s] the text to redact.
+      # @param custom_patterns [Array<String>] see {scan}.
+      # @return [Hash] `:text`, `:leaked`, and safe, masked `:findings`.
+      def self.redact(text, custom_patterns: [])
+        source   = text.to_s
+        findings = raw_findings(source, custom_patterns: custom_patterns)
+        {
+          text:     findings.empty? ? source : apply_redactions(source, findings),
+          leaked:   findings.any?,
+          findings: findings.map { |finding| public_finding(finding) }
+        }
+      end
+
+      # Detects secrets and raises when any are found.
+      #
+      # @param text [#to_s] the text to scan.
+      # @param custom_patterns [Array<String>] see {scan}.
+      # @return [Hash] the same shape as {scan} when no secret is found.
+      # @raise [Blocked] when a secret is found.
+      def self.scan!(text, custom_patterns: [])
+        result = scan(text, custom_patterns: custom_patterns)
+        raise Blocked.new(result[:findings]) if result[:leaked]
+        result
+      end
+
+      # Detection pass shared by scan, redact, and scan!. Every finding carries
+      # the private full match and its source offsets; only public_finding may
+      # cross the API boundary.
       #
       # @param text [#to_s]
-      # @return [Array<Hash>] `{ category:, full: }` Hashes.
-      private_class_method def self.raw_findings(text)
+      # @param custom_patterns [Array<String>]
+      # @return [Array<Hash>] private finding Hashes.
+      private_class_method def self.raw_findings(text, custom_patterns: [])
+        patterns = compile_custom_patterns(custom_patterns)
         findings = []
         t = text.to_s
 
         CONFIDENTIALITY_MARKERS.each do |re|
-          m = re.match(t)
-          if m
-            findings << { category: "confidentiality_marker", full: m[0] }
-            break
+          t.to_enum(:scan, re).each do
+            match = Regexp.last_match
+            findings << raw_finding("confidentiality_marker", match)
           end
         end
 
-        if (m = INTERNAL_SUFFIXES.match(t))
-          word_start = t[0...m.begin(0)].rindex(/[\s"']/).then { |i| i ? i + 1 : 0 }
-          findings << { category: "internal_endpoint", full: t[word_start...m.end(0)] }
+        t.to_enum(:scan, INTERNAL_SUFFIXES).each do
+          match      = Regexp.last_match
+          word_start = t[0...match.begin(0)].rindex(/[\s"']/).then { |index| index ? index + 1 : 0 }
+          findings << {
+            category: "internal_endpoint",
+            full:     t[word_start...match.end(0)],
+            start:    word_start,
+            end:      match.end(0)
+          }
         end
 
         SIMPLE_FINDING_PATTERNS.each do |category, pattern|
-          if (m = pattern.match(t))
-            findings << { category: category, full: m[0] }
+          t.to_enum(:scan, pattern).each do
+            findings << raw_finding(category, Regexp.last_match)
+          end
+        end
+
+        patterns.each do |pattern|
+          t.to_enum(:scan, pattern).each do
+            match = Regexp.last_match
+            findings << raw_finding("custom_pattern", match) unless match[0].empty?
           end
         end
 
         findings
+          .uniq { |finding| [finding[:category], finding[:start], finding[:end]] }
+          .sort_by { |finding| [finding[:start], finding[:end], finding[:category]] }
       end
 
-      # @param finding [Hash] a `{ category:, full: }` entry from
-      #   {raw_findings}.
-      # @return [Hash] `{ category:, matched: }`, with `matched` truncated
-      #   per {DISPLAY_TRUNCATE_AT} where applicable.
-      private_class_method def self.display_finding(finding)
-        limit = DISPLAY_TRUNCATE_AT[finding[:category]]
-        full  = finding[:full]
-        matched = limit && full.length > limit ? "#{full[0...limit]}…" : full
-        { category: finding[:category], matched: matched }
+      private_class_method def self.compile_custom_patterns(custom_patterns)
+        unless custom_patterns.is_a?(Array) && custom_patterns.all? { |pattern| pattern.is_a?(String) }
+          raise ArgumentError, "custom_patterns must be an Array of String values"
+        end
+
+        custom_patterns.map do |pattern|
+          Regexp.new(pattern, Regexp::IGNORECASE)
+        rescue RegexpError => e
+          raise ArgumentError, "invalid custom pattern #{pattern.inspect}: #{e.message}"
+        end
       end
 
-      # @param text [String]
-      # @param findings [Array<Hash>] `{ category:, full: }` entries.
-      # @return [String] `text` with every finding's full match replaced by
-      #   `[REDACTED]`.
+      private_class_method def self.raw_finding(category, match)
+        {
+          category: category,
+          full:     match[0].to_s,
+          start:    match.begin(0),
+          end:      match.end(0)
+        }
+      end
+
+      # Returns useful correlation data without exposing plaintext credentials.
+      private_class_method def self.public_finding(finding)
+        full = finding[:full]
+        {
+          category:    finding[:category],
+          matched:     masked_value(full),
+          fingerprint: "sha256:#{Digest::SHA256.hexdigest(full)[0, 12]}",
+          start:       finding[:start],
+          end:         finding[:end]
+        }
+      end
+
+      private_class_method def self.masked_value(value)
+        return "[REDACTED]" if value.length < 12
+        "#{value[0, 4]}…#{value[-4, 4]}"
+      end
+
       private_class_method def self.apply_redactions(text, findings)
-        findings.each_with_object(text.dup) do |finding, t|
-          raw = finding[:full].to_s
-          t.gsub!(raw, "[REDACTED]") if !raw.empty?
+        return "[REDACTED]" if findings.any? { |finding| finding[:category] == "confidentiality_marker" }
+
+        spans = findings
+          .map { |finding| [finding[:start], finding[:end]] }
+          .select { |start_pos, end_pos| end_pos > start_pos }
+          .sort
+
+        merged = spans.each_with_object([]) do |(start_pos, end_pos), result|
+          if result.empty? || start_pos > result.last[1]
+            result << [start_pos, end_pos]
+          else
+            result.last[1] = [result.last[1], end_pos].max
+          end
+        end
+
+        merged.reverse_each.with_object(text.dup) do |(start_pos, end_pos), output|
+          output[start_pos...end_pos] = "[REDACTED]"
         end
       end
     end

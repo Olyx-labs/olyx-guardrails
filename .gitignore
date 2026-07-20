@@ -1,0 +1,9 @@
+/.bundle/
+/.claude/
+/.ruby-lsp/
+/coverage/
+/doc/
+/pkg/
+/*.gem
+/.yardoc/
+.DS_Store

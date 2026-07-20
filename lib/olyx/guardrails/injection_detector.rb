@@ -58,7 +58,12 @@ module Olyx
       #   Array of content-block Hashes (each with a `"text"`/`:text` key).
       # @return [Hash] `:injection_attempt` (Boolean) and `:patterns` (Array
       #   of `{ role:, match: }` Hashes, deduplicated by matched text).
+      # @raise [ArgumentError] when `messages` is not an Array of Hashes.
       def self.scan(messages)
+        unless messages.is_a?(Array) && messages.all? { |message| message.is_a?(Hash) }
+          raise ArgumentError, "messages must be an Array of Hash values"
+        end
+
         detected = []
 
         messages.each do |msg|
@@ -117,6 +122,10 @@ module Olyx
       private_class_method def self.scan_multi_turn(messages)
         detected = []
         messages.each_cons(2) do |first, second|
+          first_role  = (first["role"] || first[:role]).to_s.downcase
+          second_role = (second["role"] || second[:role]).to_s.downcase
+          next unless first_role == "user" && second_role == "assistant"
+
           first_content  = extract_content(first).to_s
           second_content = extract_content(second).to_s
           MULTI_TURN_PAIRS.each do |user_pat, followup_pat|
