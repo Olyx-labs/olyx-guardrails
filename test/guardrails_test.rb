@@ -187,6 +187,12 @@ class GuardrailsTest < Minitest::Test
     refute result.key?(:ai_analysis)
   end
 
+  def test_ai_analyzer_must_be_callable
+    assert_raises(ArgumentError) do
+      Olyx::Guardrails.check("hello", ai_analyzer: Object.new)
+    end
+  end
+
   def test_hook_returning_non_hash_records_error
     hook = ->(_text, _ctx) { "not a hash" }
     result = Olyx::Guardrails.check("clean input", ai_analyzer: hook)

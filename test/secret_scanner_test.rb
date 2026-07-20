@@ -38,6 +38,11 @@ class SecretScannerTest < Minitest::Test
     assert_empty result[:findings]
   end
 
+  def test_scan_bang_returns_clean_result
+    result = Olyx::Guardrails::SecretScanner.scan!("The weather is nice today")
+    refute result[:leaked]
+  end
+
   def test_scan_only_detects
     result = Olyx::Guardrails::SecretScanner.scan("call http://api.internal/v1")
     assert result[:leaked]
@@ -142,6 +147,17 @@ class SecretScannerTest < Minitest::Test
 
     assert_equal "[REDACTED] then [REDACTED]", result[:text]
     assert_equal 2, result[:findings].count { |finding| finding[:category] == "custom_pattern" }
+  end
+
+  def test_redact_merges_overlapping_builtin_and_custom_matches
+    token = "ghp_#{'a' * 36}"
+    result = Olyx::Guardrails::SecretScanner.redact(
+      token,
+      custom_patterns: [Regexp.escape(token)]
+    )
+
+    assert_equal "[REDACTED]", result[:text]
+    assert_equal 2, result[:findings].length
   end
 
   def test_confidentiality_marker_redacts_whole_input

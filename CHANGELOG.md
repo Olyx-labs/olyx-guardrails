@@ -31,6 +31,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - AI finding fields require actual Boolean values rather than Ruby truthiness.
 
 ### Fixed
+- RubyCritic now consumes SimpleCov's native result set, replacing the
+  incompatible custom coverage output that made every file appear uncovered.
 - PII message scrubbing now handles array-style text content blocks and
   preserves symbol/string key style.
 - Multi-turn injection rules now require the documented adjacent
@@ -39,6 +41,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   numeric identifiers are no longer treated as phone numbers.
 
 ### Changed
+- Split check execution, risk scoring, OpenAI response parsing, Rootly payload
+  construction and transport, PII validation, and secret finding collection
+  into focused components. RubyCritic now reports only A/B file ratings, no
+  smells or duplication, and a measured overall score above 87.
+- Raised the enforced RubyCritic baseline from 73 to 85 and added minimum
+  coverage gates of 95% lines and 80% branches.
 - Gem version now has one source of truth in `version.rb`.
 - CI uses least privilege, immutable action SHAs, and tests the supported Ruby
   3.4 and 4.0 release lines.
@@ -52,7 +60,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Added a project-local rbenv pin for Ruby 3.4.10 and a blocking RubyCritic
-  maintainability gate at the measured post-refactor baseline of 73.
+  maintainability gate.
 - Refactored scanner, analyzer configuration, and integration hot spots so no
   individual method triggers RubyCritic's high-complexity threshold and the
   report contains no smells or duplicated code.

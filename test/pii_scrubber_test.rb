@@ -45,6 +45,14 @@ class PiiScrubberTest < Minitest::Test
     refute result[:detected]
   end
 
+  def test_scrub_messages_preserves_non_text_content
+    messages = [{role: :user, content: 42}]
+    result = Olyx::Guardrails::PiiScrubber.scrub_messages_with_detection(messages)
+
+    refute result[:detected]
+    assert_equal messages, result[:messages]
+  end
+
   def test_scrubs_passport_with_context
     result = Olyx::Guardrails::PiiScrubber.scrub("my passport number: AB1234567")
     assert_includes result, "[PASSPORT]"

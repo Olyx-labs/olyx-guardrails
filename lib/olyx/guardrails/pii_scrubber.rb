@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "validation"
+require_relative "pii_validators"
 
 module Olyx
   module Guardrails
@@ -50,13 +51,13 @@ module Olyx
       # special-casing any one pattern in `scrub`.
       PATTERNS = [
         [ EMAIL_PATTERN,    "[EMAIL]"    ],
-        [ SSN_PATTERN,      "[SSN]",      ->(match) { ssn_valid?(match) } ],
+        [ SSN_PATTERN,      "[SSN]",      ->(match) { PiiValidators.ssn_valid?(match) } ],
         [ PASSPORT_PATTERN, "[PASSPORT]" ],
-        [ IBAN_PATTERN,     "[IBAN]",     ->(match) { iban_valid?(match) } ],
+        [ IBAN_PATTERN,     "[IBAN]",     ->(match) { PiiValidators.iban_valid?(match) } ],
         [ DOB_PATTERN,      "[DOB]"      ],
-        [ IPV4_PATTERN,     "[IP]",       ->(match) { ipv4_valid?(match) } ],
+        [ IPV4_PATTERN,     "[IP]",       ->(match) { PiiValidators.ipv4_valid?(match) } ],
         [ TOKEN_PATTERN,    "[TOKEN]"    ],
-        [ CARD_PATTERN,     "[CARD]",    ->(match) { luhn_valid?(match) } ],
+        [ CARD_PATTERN,     "[CARD]",    ->(match) { PiiValidators.luhn_valid?(match) } ],
         [ PHONE_PATTERN,    "[PHONE]"    ]
       ].freeze
 
@@ -77,62 +78,6 @@ module Olyx
             output.gsub(pattern, replacement)
           end
         end
-      end
-
-      # Luhn checksum — filters CARD_PATTERN's digit-count heuristic down to
-      # numbers that are actually structurally valid card numbers, so plain
-      # numeric IDs (order #s, timestamps, tracking #s) aren't mislabeled.
-      #
-      # @param number_str [String] a digit sequence, optionally with spaces
-      #   or hyphens.
-      # @return [Boolean] whether the digits pass the Luhn checksum.
-      def self.luhn_valid?(number_str)
-        digits = number_str.gsub(/\D/, "").chars.map(&:to_i)
-        return false if digits.length < 13
-
-        sum = digits.reverse.each_with_index.sum do |digit, index|
-          next digit if index.even?
-          doubled = digit * 2
-          doubled > 9 ? doubled - 9 : doubled
-        end
-
-        (sum % 10).zero?
-      end
-      private_class_method :luhn_valid?
-
-      # Rejects structurally impossible U.S. SSNs.
-      private_class_method def self.ssn_valid?(ssn)
-        area, group, serial = ssn.split(/[- ]/)
-        return false unless area && group && serial
-        !area.match?(/\A(?:000|666|9\d{2})\z/) && group != "00" && serial != "0000"
-      end
-
-      # Validates every IPv4 octet instead of accepting values such as
-      # 999.999.999.999.
-      private_class_method def self.ipv4_valid?(address)
-        octets = address.split(".")
-        octets.length == 4 && octets.all? { |octet| octet.to_i.between?(0, 255) }
-      end
-
-      # ISO 13616 mod-97 validation for IBAN candidates.
-      private_class_method def self.iban_valid?(iban)
-        compact = iban.delete(" ").upcase
-        return false unless compact.match?(/\A[A-Z]{2}\d{2}[A-Z0-9]{11,30}\z/)
-        return false unless compact.length.between?(15, 34)
-
-        rearranged = compact[4..] + compact[0, 4]
-        remainder = rearranged.each_char.reduce(0) { |value, char| iban_remainder(value, char) }
-        remainder == 1
-      end
-
-      private_class_method def self.iban_remainder(remainder, char)
-        iban_digits(char).each_char.reduce(remainder) do |value, digit|
-          ((value * 10) + digit.to_i) % 97
-        end
-      end
-
-      private_class_method def self.iban_digits(char)
-        char.match?(/[A-Z]/) ? (char.ord - 55).to_s : char
       end
 
       # @param messages [Array<Hash>] chat-style messages with `"content"`

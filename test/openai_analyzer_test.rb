@@ -147,4 +147,72 @@ class OpenAIAnalyzerTest < Minitest::Test
       end
     end
   end
+
+  def test_connector_rejects_invalid_optional_boundaries
+    base_options = {
+      model: "gpt-compatible",
+      client: FakeClient.new(FakeResponses.new({})),
+      schema: FakeSchema
+    }
+
+    [
+      {client: Object.new},
+      {schema: Object.new},
+      {request_options: "five seconds"}
+    ].each do |invalid|
+      assert_raises(ArgumentError) do
+        Olyx::Guardrails::Integrations::OpenAIAnalyzer.new(**base_options, **invalid)
+      end
+    end
+  end
+
+  def test_default_schema_and_client_use_the_official_sdk_contract
+    analyzer_class = Olyx::Guardrails::Integrations::OpenAIAnalyzer
+    original_schema = analyzer_class.const_get(:AnalysisSchema, false) if
+      analyzer_class.const_defined?(:AnalysisSchema, false)
+    analyzer_class.send(:remove_const, :AnalysisSchema) if original_schema
+    original_openai = Object.const_get(:OpenAI, false) if Object.const_defined?(:OpenAI, false)
+    Object.send(:remove_const, :OpenAI) if original_openai
+
+    fake_base_model = Class.new do
+      def self.required(name, type, doc:)
+        fields << [name, type, doc]
+      end
+
+      def self.fields
+        @fields ||= []
+      end
+    end
+    fake_client = Class.new
+    fake_openai = Module.new
+    fake_openai.const_set(:BaseModel, fake_base_model)
+    fake_openai.const_set(:Boolean, Object.new)
+    fake_openai.const_set(:Client, fake_client)
+    Object.const_set(:OpenAI, fake_openai)
+
+    analyzer_class.stub(:require_openai_sdk, nil) do
+      schema = analyzer_class.analysis_schema
+
+      assert_same schema, analyzer_class.analysis_schema
+      assert_operator schema, :<, fake_base_model
+      assert_equal 5, schema.fields.length
+      assert_instance_of fake_client, analyzer_class.openai_client
+    end
+  ensure
+    if analyzer_class&.const_defined?(:AnalysisSchema, false)
+      analyzer_class.send(:remove_const, :AnalysisSchema)
+    end
+    analyzer_class.const_set(:AnalysisSchema, original_schema) if original_schema
+    Object.send(:remove_const, :OpenAI) if Object.const_defined?(:OpenAI, false)
+    Object.const_set(:OpenAI, original_openai) if original_openai
+  end
+
+  def test_missing_optional_sdk_has_an_actionable_error
+    analyzer_class = Olyx::Guardrails::Integrations::OpenAIAnalyzer
+
+    analyzer_class.stub(:require, ->(_name) { raise LoadError }) do
+      error = assert_raises(LoadError) { analyzer_class.openai_client }
+      assert_match(/add gem "openai"/, error.message)
+    end
+  end
 end

@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
-require "net/http"
-require "json"
-require_relative "../pii_scrubber"
-require_relative "../secret_scanner"
+require_relative "rootly_payload_builder"
+require_relative "rootly_transport"
 
 module Olyx
   module Guardrails
@@ -13,22 +11,6 @@ module Olyx
       # projects not using Rootly pay no cost.
       class RootlyNotifier
         ROOTLY_API = "https://api.rootly.com".freeze
-
-        SEVERITY_MAP = [
-          [0.75, "sev1"],
-          [0.50, "sev2"],
-          [0.25, "sev3"],
-          [0.0,  "sev4"]
-        ].freeze
-
-        # Preview is redacted before truncation, so a secret/PII match that
-        # straddles the truncation point still gets caught. The scrub window
-        # is generous relative to any pattern's max length but still bounded,
-        # so building a preview from a huge input stays cheap.
-        PREVIEW_LENGTH       = 300
-        PREVIEW_SCRUB_WINDOW = 2_000
-        SUMMARY_FIELD_LENGTH = 300
-        METADATA_KEY_LENGTH  = 50
 
         # @param api_key [String] Rootly API bearer token.
         # @param environment [String, nil] included in the incident title
@@ -79,124 +61,16 @@ module Olyx
         private
 
         def build_payload(result, input:, metadata:)
-          violations = violation_labels(result)
-          environment = sanitize_field(@environment, max_length: METADATA_KEY_LENGTH)
-          env_tag     = environment.empty? ? "" : " [#{environment}]"
-
-          {
-            data: {
-              type: "incidents",
-              attributes: {
-                title:         "AI Guardrail Violation#{env_tag}: #{violations.first}",
-                summary:       build_summary(result, input, violations, metadata),
-                severity_slug: severity_for(result[:risk_score].to_f),
-                labels:        [{ name: "ai-safety" }, { name: "olyx-guardrails" }]
-              }
-            }
-          }
-        end
-
-        def violation_labels(result)
-          labels = []
-          labels << "injection attempt" if result[:injection_attempt]
-          labels << "secret leaked"     if result[:secret_leaked]
-          labels << "PII detected"      if result[:pii_detected]
-
-          length_check = result[:checks]&.find { |check| check[:type] == "length" }
-          labels << "input length exceeded" if length_check && !length_check[:allowed]
-
-          labels.empty? ? ["policy violation"] : labels
-        end
-
-        def build_summary(result, input, violations, metadata)
-          lines = [
-            "**Violations:** #{violations.join(', ')}",
-            "**Risk score:** #{result[:risk_score]}",
-            "**Request blocked:** #{!result[:allowed]}"
-          ]
-
-          if (reason = result.dig(:ai_analysis, :reason))
-            lines << "**AI analysis:** #{sanitize_field(reason)}"
-          end
-
-          lines << "**Input preview:** #{redacted_preview(input)}" if input
-
-          metadata.each do |key, value|
-            safe_key   = sanitize_metadata_key(key)
-            safe_value = sanitize_field(value)
-            lines << "**#{safe_key}:** #{safe_value}"
-          end
-
-          lines.join("\n")
-        end
-
-        # Redacts PII and secrets before truncating, so what leaves the
-        # process for a third-party incident tool is never the raw violation
-        # content that triggered the alert in the first place.
-        def redacted_preview(input)
-          source    = input.to_s
-          raw       = source[0...PREVIEW_SCRUB_WINDOW]
-          scrubbed  = PiiScrubber.scrub(raw)
-          scrubbed  = SecretScanner.redact(scrubbed)[:text]
-          truncated = scrubbed[0...PREVIEW_LENGTH]
-          truncated += "…" if scrubbed.length > PREVIEW_LENGTH || source.length > PREVIEW_SCRUB_WINDOW
-          truncated
-        end
-
-        def severity_for(score)
-          SEVERITY_MAP.find { |threshold, _| score >= threshold }&.last || "sev4"
-        end
-
-        def sanitize_field(value, max_length: SUMMARY_FIELD_LENGTH)
-          raw      = value.to_s[0...PREVIEW_SCRUB_WINDOW]
-          scrubbed = PiiScrubber.scrub(raw)
-          scrubbed = SecretScanner.redact(scrubbed)[:text]
-          scrubbed.gsub(/[\r\n\t]+/, " ")[0...max_length]
-        end
-
-        def sanitize_metadata_key(key)
-          normalized = key.to_s.gsub(/[^A-Za-z0-9_.-]/, "_")[0...METADATA_KEY_LENGTH]
-          normalized.empty? ? "metadata" : normalized
+          RootlyPayloadBuilder.call(
+            result,
+            input: input,
+            metadata: metadata,
+            environment: @environment
+          )
         end
 
         def post_incident(payload)
-          uri = URI("#{ROOTLY_API}/v1/incidents")
-          response = build_http(uri).request(build_request(uri, payload))
-          incident_response(response)
-        rescue => error
-          { success: false, error: error.message }
-        end
-
-        def build_http(uri)
-          http = Net::HTTP.new(uri.host, uri.port)
-          http.use_ssl      = true
-          http.open_timeout = 5
-          http.read_timeout = 10
-          http
-        end
-
-        def build_request(uri, payload)
-          request = Net::HTTP::Post.new(uri)
-          request["Authorization"] = "Bearer #{@api_key}"
-          request["Content-Type"] = "application/vnd.api+json"
-          request["Accept"] = "application/vnd.api+json"
-          request.body = JSON.generate(payload)
-          request
-        end
-
-        def incident_response(response)
-          status = response.code.to_i
-          {
-            success:     status.between?(200, 299),
-            status:      status,
-            incident_id: parse_incident_id(response)
-          }
-        end
-
-        def parse_incident_id(response)
-          JSON.parse(response.body).dig("data", "id")
-        rescue StandardError
-          nil
+          RootlyTransport.new(api_key: @api_key, endpoint: ROOTLY_API).post(payload)
         end
       end
     end

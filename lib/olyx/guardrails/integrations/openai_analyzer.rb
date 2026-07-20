@@ -3,6 +3,7 @@
 require "json"
 require_relative "../../guardrails"
 require_relative "openai_analyzer_configuration"
+require_relative "openai_response_parser"
 
 module Olyx
   module Guardrails
@@ -95,7 +96,8 @@ module Olyx
           )
           params[:request_options] = @request_options if @request_options
 
-          extract_parsed(@client.responses.create(**params))
+          response = @client.responses.create(**params)
+          OpenAIResponseParser.parse(response, error_class: ResponseError)
         end
 
         class << self
@@ -168,40 +170,6 @@ module Olyx
           ]
         end
 
-        def extract_parsed(response)
-          response_contents(response).each do |content|
-            raise_for_refusal(content)
-            parsed = read_member(content, :parsed)
-            return parsed if parsed
-          end
-
-          raise ResponseError, "OpenAI response did not contain parsed structured output"
-        end
-
-        def response_contents(response)
-          Array(read_member(response, :output)).flat_map do |output|
-            Array(read_member(output, :content))
-          end
-        end
-
-        def raise_for_refusal(content)
-          return unless read_member(content, :type).to_s == "refusal"
-
-          refusal = read_member(content, :refusal).to_s
-          raise ResponseError, bounded_error("OpenAI refused the analysis: #{refusal}")
-        end
-
-        def read_member(object, key)
-          if object.respond_to?(key)
-            object.public_send(key)
-          elsif object.is_a?(Hash)
-            object.key?(key) ? object[key] : object[key.to_s]
-          end
-        end
-
-        def bounded_error(message)
-          message.to_s.gsub(/[\r\n\t]+/, " ")[0...201]
-        end
       end
     end
   end

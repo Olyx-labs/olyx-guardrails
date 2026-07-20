@@ -6,7 +6,7 @@ if ENV["COVERAGE"] == "true"
   SimpleCov.start do
     enable_coverage :branch
     cover "lib/**/*.rb"
-    minimum_coverage line: 40, branch: 10
+    minimum_coverage line: 95, branch: 80
   end
 end
 
