@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Wires the ai_analyzer: hook to Claude for semantic injection detection.
 #
 # Usage:

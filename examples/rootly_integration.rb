@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # End-to-end example: guardrail check → Claude semantic analysis → Rootly incident.
 #
 # Usage:

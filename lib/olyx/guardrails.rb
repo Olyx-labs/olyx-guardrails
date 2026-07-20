@@ -1,45 +1,55 @@
+# frozen_string_literal: true
+
 require_relative "guardrails/version"
 require_relative "guardrails/pii_scrubber"
 require_relative "guardrails/injection_detector"
 require_relative "guardrails/secret_scanner"
 
 module Olyx
+  # Guardrails is a standalone, in-process AI safety toolkit: PII redaction,
+  # prompt-injection detection, and secret scanning, unified behind a single
+  # `.check` entry point.
   module Guardrails
     INJECTION_RISK_WEIGHT = 0.50
     SECRET_RISK_WEIGHT    = 0.25
     PII_RISK_WEIGHT       = 0.10
     BLOCKED_RISK_WEIGHT   = 0.15
 
-    # Single-call guardrail check — runs PII detection, injection detection,
-    # and secret scanning. Returns the same shape as GuardrailService.ruby_check
-    # so olyx-api can delegate directly.
+    # Runs the full guardrail suite (PII, injection, secret, and length
+    # checks) on a single input in one call, optionally enriched by a
+    # caller-supplied AI analyzer hook. Returns the same shape as
+    # `GuardrailService#ruby_check` so olyx-api can delegate directly.
     #
-    #   Olyx::Guardrails.check(
-    #     input,
-    #     max_input_length:    10_000,
-    #     injection_block:     true,
-    #     secret_action:       "alert",
-    #     custom_patterns:     []
-    #   )
-    # ai_analyzer: optional callable — receives (text, context) and returns a hash.
+    # The hook follows defense-in-depth: AI findings union with regex
+    # findings — the hook can flag additional violations but cannot clear
+    # existing ones. Exceptions raised by the hook are rescued; the error is
+    # recorded in `ai_analysis[:error]` and the regex result stands.
     #
-    # context keys passed to the hook:
-    #   pii_detected:       Boolean — regex found PII
-    #   injection_attempt:  Boolean — regex found injection patterns
-    #   injection_patterns: Array   — matched pattern details
-    #   secret_leaked:      Boolean — regex found secrets
-    #
-    # Expected return keys (all optional):
-    #   injection_attempt: Boolean
-    #   pii_detected:      Boolean
-    #   secret_leaked:     Boolean
-    #   risk_score:        Float (0.0..1.0) — takes precedence when higher than regex score
-    #   reason:            String — LLM explanation, included in ai_analysis
-    #
-    # The hook follows defense-in-depth: AI findings union with regex findings —
-    # the hook can flag additional violations but cannot clear existing ones.
-    # Exceptions raised by the hook are rescued; the error is recorded in
-    # ai_analysis[:error] and the regex result stands.
+    # @param input [#to_s] the content to check; converted via `to_s`.
+    # @param max_input_length [Integer] maximum allowed length. The `pii`,
+    #   `injection`, and `secret` checks are skipped entirely (not just
+    #   failed) when this is exceeded, so an oversized payload never pays
+    #   their scanning cost.
+    # @param injection_block [Boolean] whether a detected injection attempt
+    #   makes the result `allowed: false`.
+    # @param secret_action ["alert", "redact", "block"] how to respond to a
+    #   detected secret.
+    # @param custom_patterns [Array<String>] extra regex strings for secret
+    #   scanning, in addition to the built-in patterns.
+    # @param ai_analyzer [#call, nil] optional callable receiving
+    #   `(text, context)` and returning a Hash. `context` carries
+    #   `:pii_detected`, `:injection_attempt`, `:injection_patterns`, and
+    #   `:secret_leaked` from the regex pass. The hook's return Hash may
+    #   include any of `:injection_attempt`, `:pii_detected`,
+    #   `:secret_leaked` (Boolean), `:risk_score` (Float in `0.0..1.0`, used
+    #   when higher than the regex-derived score), and `:reason` (String,
+    #   surfaced in `ai_analysis`). Not called when `max_input_length` is
+    #   exceeded.
+    # @return [Hash] `:allowed`, `:pii_detected`, `:injection_attempt`,
+    #   `:secret_leaked` (all Boolean), `:risk_score` (Float in `0.0..1.0`),
+    #   `:checks` (Array of per-check Hashes, one each for `pii`,
+    #   `injection`, `secret`, `length`), and `:ai_analysis` (present only
+    #   when `ai_analyzer` is supplied).
     def self.check(
       input,
       max_input_length: 10_000,
@@ -98,12 +108,20 @@ module Olyx
       result
     end
 
+    # @param input_str [String]
+    # @return [Hash] the `pii` check: `:type`, `:allowed` (always `true` —
+    #   PII alone never blocks a request, it only feeds `risk_score`), and
+    #   `:detected` (Boolean).
     private_class_method def self.check_pii(input_str)
       detected = PiiScrubber.scrub(input_str) != input_str
-      # PII alone never blocks a request — it only feeds risk_score.
       { type: "pii", allowed: true, detected: detected }
     end
 
+    # @param input_str [String]
+    # @param injection_block [Boolean]
+    # @return [Hash] the `injection` check: `:type`, `:allowed`,
+    #   `:injection_attempt` (Boolean), and `:patterns` (Array of matched
+    #   pattern details from InjectionDetector).
     private_class_method def self.check_injection(input_str, injection_block)
       result  = InjectionDetector.scan([ { "role" => "user", "content" => input_str } ])
       attempt = result[:injection_attempt]
@@ -115,8 +133,15 @@ module Olyx
       }
     end
 
-    # Rescues Blocked so check() always returns a result hash. Callers that
-    # want the exception (proxy controllers) call SecretScanner.scan directly.
+    # Rescues Blocked so `check` always returns a result hash. Callers that
+    # want the exception (proxy controllers) call `SecretScanner.scan`
+    # directly.
+    #
+    # @param input_str [String]
+    # @param secret_action [String]
+    # @param custom_patterns [Array<String>]
+    # @return [Hash] the `secret` check: `:type`, `:allowed`, `:leaked`
+    #   (Boolean), and `:count` (Integer number of findings).
     private_class_method def self.check_secret(input_str, secret_action, custom_patterns)
       result = begin
         SecretScanner.scan(input_str, secret_action: secret_action, custom_patterns: custom_patterns)
@@ -129,19 +154,41 @@ module Olyx
       { type: "secret", allowed: !leaked || !blocks, leaked: leaked, count: result[:findings].size }
     end
 
+    # @param input_str [String]
+    # @param max_input_length [Integer]
+    # @return [Hash] the `length` check: `:type`, `:allowed`, `:length`
+    #   (Integer), and `:max_length` (Integer).
     private_class_method def self.check_length(input_str, max_input_length)
       exceeded = input_str.length > max_input_length
       { type: "length", allowed: !exceeded, length: input_str.length, max_length: max_input_length }
     end
 
+    # Builds a placeholder check hash for a scan that was skipped because
+    # `max_input_length` was already exceeded.
+    #
+    # @param type [String] the check's `:type` value.
+    # @param fields [Hash] extra fields merged into the result.
+    # @return [Hash] `:type`, `:allowed` (always `true`), `:skipped` (always
+    #   `true`), plus `fields`.
     private_class_method def self.skipped_check(type, **fields)
       { type: type, allowed: true, skipped: true, **fields }
     end
 
     # Runs the hook (when applicable) and merges its findings into the three
-    # content checks. Returns [pii_check, injection_check, secret_check,
-    # ai_result] — ai_result is nil when there's no hook or length already
-    # failed, so callers can tell "didn't run" apart from "ran, found nothing".
+    # content checks.
+    #
+    # @param analyzer [#call, nil]
+    # @param input_str [String]
+    # @param length_check [Hash]
+    # @param pii_check [Hash]
+    # @param injection_check [Hash]
+    # @param secret_check [Hash]
+    # @param injection_block [Boolean]
+    # @param secret_action [String]
+    # @return [Array(Hash, Hash, Hash, Hash)] `[pii_check, injection_check,
+    #   secret_check, ai_result]` — `ai_result` is `nil` when there's no hook
+    #   or length already failed, so callers can tell "didn't run" apart
+    #   from "ran, found nothing".
     private_class_method def self.apply_ai_analysis(
       analyzer, input_str, length_check, pii_check, injection_check, secret_check,
       injection_block:, secret_action:
@@ -165,6 +212,16 @@ module Olyx
       ]
     end
 
+    # Calls the hook and sanitizes its return value down to the keys
+    # `Olyx::Guardrails.check` understands, so an untrusted hook can't
+    # inject arbitrary keys into the result.
+    #
+    # @param analyzer [#call]
+    # @param text [String]
+    # @param context [Hash]
+    # @return [Hash] a subset of `:injection_attempt`, `:pii_detected`,
+    #   `:secret_leaked`, `:risk_score`, `:reason`, or `{ error: String }` if
+    #   the hook raised or returned something other than a Hash.
     private_class_method def self.run_ai_analysis(analyzer, text, context)
       result = analyzer.call(text, context)
       return { error: "ai_analyzer must return a Hash" } unless result.is_a?(Hash)
@@ -173,16 +230,31 @@ module Olyx
       { error: e.message.to_s[0..200] }
     end
 
+    # @param check [Hash] the current `injection` check.
+    # @param ai_result [Hash]
+    # @param injection_block [Boolean]
+    # @return [Hash] `check`, or `check` merged with the AI's finding when
+    #   `ai_result[:injection_attempt]` is truthy.
     private_class_method def self.ai_merge_injection(check, ai_result, injection_block)
       return check unless ai_result[:injection_attempt]
       check.merge(injection_attempt: true, allowed: !injection_block, ai_flagged: true)
     end
 
+    # @param check [Hash] the current `pii` check.
+    # @param ai_result [Hash]
+    # @return [Hash] `check`, or `check` merged with the AI's finding when
+    #   `ai_result[:pii_detected]` is truthy.
     private_class_method def self.ai_merge_pii(check, ai_result)
       return check unless ai_result[:pii_detected]
       check.merge(detected: true, ai_flagged: true)
     end
 
+    # @param check [Hash] the current `secret` check.
+    # @param ai_result [Hash]
+    # @param secret_action [String]
+    # @return [Hash] `check`, or `check` merged with the AI's finding when
+    #   `ai_result[:secret_leaked]` is truthy. `:count` is bumped to at
+    #   least 1 so `leaked: true` never sits alongside a stale `count: 0`.
     private_class_method def self.ai_merge_secret(check, ai_result, secret_action)
       return check unless ai_result[:secret_leaked]
       count = check[:count].to_i
@@ -191,15 +263,24 @@ module Olyx
 
     # A hook is untrusted input: coerce risk_score defensively so a NaN,
     # Infinity, wrong type, or garbage string from a flaky LLM response can
-    # never propagate into a Float#clamp comparison and raise. Returns nil
-    # (treated as "no usable score") rather than a fallback number, so a
-    # broken hook never silently produces a specific-looking wrong score.
+    # never propagate into a `Float#clamp` comparison and raise. Returns
+    # `nil` (treated as "no usable score") rather than a fallback number, so
+    # a broken hook never silently produces a specific-looking wrong score.
+    #
+    # @param value [Object] the hook's raw `:risk_score` value.
+    # @return [Float, nil] a value clamped to `0.0..1.0`, or `nil` if `value`
+    #   isn't a finite number.
     private_class_method def self.coerce_risk_score(value)
       float = Float(value, exception: false)
       return nil if float.nil? || !float.finite?
       float.clamp(0.0, 1.0)
     end
 
+    # @param pii [Boolean]
+    # @param injection [Boolean]
+    # @param secret [Boolean]
+    # @param checks [Array<Hash>]
+    # @return [Float] a weighted heuristic score in `0.0..1.0`.
     private_class_method def self.compute_risk_score(pii:, injection:, secret:, checks:)
       score  = 0.0
       score += INJECTION_RISK_WEIGHT if injection

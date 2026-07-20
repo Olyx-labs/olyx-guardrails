@@ -1,5 +1,15 @@
+# frozen_string_literal: true
+
 module Olyx
   module Guardrails
+    # Detects and redacts common PII formats (email, phone, SSN, credit
+    # card, IPv4, API tokens, passport numbers, IBANs, dates of birth) from
+    # free text and chat-style message arrays.
+    #
+    # REVIEW: pattern coverage is biased toward US/Western formats — non-US
+    #   national identifiers and unicode-obfuscated text (spaced-out or
+    #   homoglyph substitution) aren't reliably caught. See the README
+    #   Limitations section.
     class PiiScrubber
       EMAIL_PATTERN    = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/
       # Digit lookaround at both ends (unlike the other patterns, this had no
@@ -9,6 +19,11 @@ module Olyx
       SSN_PATTERN      = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/
       # Anchored on a mandatory trailing digit (not a separator) so the match
       # can't absorb a trailing space/hyphen that belongs to surrounding text.
+      #
+      # REVIEW: digit-count + Luhn is a structural check, not proof of a real
+      #   card number — it will still occasionally match a Luhn-valid ID that
+      #   happens not to be a card. There's no way to fully disambiguate
+      #   without an issuer/BIN lookup.
       CARD_PATTERN     = /\b\d(?:[ \-]?\d){12,18}\b/
       IPV4_PATTERN     = /\b(?:\d{1,3}\.){3}\d{1,3}\b/
       TOKEN_PATTERN    = /\b(?:Bearer\s+|sk-|ak_live_|fy-ent-)[A-Za-z0-9._\-]{8,}\b/i
@@ -44,6 +59,13 @@ module Olyx
         [ PHONE_PATTERN,    "[PHONE]"    ]
       ].freeze
 
+      # Redacts every recognized PII pattern in `text`, replacing each match
+      # with a bracketed tag (e.g. `[EMAIL]`).
+      #
+      # @param text [Object] the text to scrub. Non-String values are
+      #   returned unchanged.
+      # @return [Object] the redacted String, or `text` itself if it wasn't
+      #   a String.
       def self.scrub(text)
         return text unless text.is_a?(String)
         PATTERNS.reduce(text) do |t, (pattern, replacement, validator)|
@@ -58,6 +80,10 @@ module Olyx
       # Luhn checksum — filters CARD_PATTERN's digit-count heuristic down to
       # numbers that are actually structurally valid card numbers, so plain
       # numeric IDs (order #s, timestamps, tracking #s) aren't mislabeled.
+      #
+      # @param number_str [String] a digit sequence, optionally with spaces
+      #   or hyphens.
+      # @return [Boolean] whether the digits pass the Luhn checksum.
       def self.luhn_valid?(number_str)
         digits = number_str.gsub(/\D/, "").chars.map(&:to_i)
         return false if digits.length < 13
@@ -72,10 +98,18 @@ module Olyx
       end
       private_class_method :luhn_valid?
 
+      # @param messages [Array<Hash>] chat-style messages with `"content"`
+      #   or `:content` keys.
+      # @return [Array<Hash>] `messages` with String content redacted via
+      #   {scrub}.
       def self.scrub_messages(messages)
         scrub_messages_with_detection(messages)[:messages]
       end
 
+      # @param messages [Array<Hash>] chat-style messages with `"content"`
+      #   or `:content` keys.
+      # @return [Hash] `:messages` (Array, redacted like {scrub_messages})
+      #   and `:detected` (Boolean, whether any redaction occurred).
       def self.scrub_messages_with_detection(messages)
         detected = false
 

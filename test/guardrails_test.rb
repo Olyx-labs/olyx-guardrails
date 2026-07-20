@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative "test_helper"
 
 class GuardrailsTest < Minitest::Test
@@ -100,7 +102,7 @@ class GuardrailsTest < Minitest::Test
     assert result[:injection_attempt]
   end
 
-  # ai_analyzer hook tests
+  # ai_analyzer hook tests.
 
   def test_hook_receives_text_and_context
     received = {}
