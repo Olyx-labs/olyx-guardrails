@@ -193,6 +193,40 @@ class GuardrailsTest < Minitest::Test
     assert result[:ai_analysis][:error]
   end
 
+  def test_hook_accepts_openai_style_schema_model
+    schema_model = Object.new
+    schema_model.define_singleton_method(:deep_to_h) do
+      {
+        "injection_attempt" => true,
+        "pii_detected" => false,
+        "secret_leaked" => false,
+        "risk_score" => 0.91,
+        "reason" => "semantic jailbreak"
+      }
+    end
+    hook = ->(_text, _ctx) { schema_model }
+
+    result = Olyx::Guardrails.check("hypothetical request", ai_analyzer: hook)
+
+    refute result[:allowed]
+    assert result[:injection_attempt]
+    assert_in_delta 0.91, result[:risk_score], 0.001
+    assert_equal "semantic jailbreak", result.dig(:ai_analysis, :reason)
+  end
+
+  def test_hook_accepts_schema_model_with_to_h
+    schema_model = Object.new
+    schema_model.define_singleton_method(:to_h) do
+      {"pii_detected" => true, "reason" => "contextual identifier"}
+    end
+    hook = ->(_text, _ctx) { schema_model }
+
+    result = Olyx::Guardrails.check("customer record", ai_analyzer: hook)
+
+    assert result[:pii_detected]
+    assert_equal "contextual identifier", result.dig(:ai_analysis, :reason)
+  end
+
   def test_hook_nan_risk_score_does_not_crash
     hook = ->(_text, _ctx) { { risk_score: 0.0 / 0.0 } }
     result = Olyx::Guardrails.check("clean input", ai_analyzer: hook)

@@ -14,6 +14,13 @@ module Olyx
     SECRET_RISK_WEIGHT    = 0.25
     PII_RISK_WEIGHT       = 0.10
     BLOCKED_RISK_WEIGHT   = 0.15
+    AI_ANALYSIS_KEYS      = %i[
+      injection_attempt
+      pii_detected
+      secret_leaked
+      risk_score
+      reason
+    ].freeze
 
     # Runs the full guardrail suite (PII, injection, secret, and length
     # checks) on a single input in one call, optionally enriched by a
@@ -36,7 +43,8 @@ module Olyx
     # @param custom_patterns [Array<String>] extra regex strings for secret
     #   scanning, in addition to the built-in patterns.
     # @param ai_analyzer [#call, nil] optional callable receiving
-    #   `(text, context)` and returning a Hash. `context` carries
+    #   `(text, context)` and returning a Hash or an OpenAI schema-model
+    #   instance. `context` carries
     #   `:pii_detected`, `:injection_attempt`, `:injection_patterns`, and
     #   `:secret_leaked` from the regex pass. The hook's return Hash may
     #   include any of `:injection_attempt`, `:pii_detected`,
@@ -235,21 +243,30 @@ module Olyx
       ]
     end
 
-    # Calls the hook and sanitizes its return value down to the keys
-    # `Olyx::Guardrails.check` understands, so an untrusted hook can't
-    # inject arbitrary keys into the result.
+    # Calls the hook, converts Hash-like schema models, and sanitizes the
+    # result down to the keys `Olyx::Guardrails.check` understands, so an
+    # untrusted hook can't inject arbitrary keys into the result.
     #
     # @param analyzer [#call]
     # @param text [String]
     # @param context [Hash]
     # @return [Hash] a subset of `:injection_attempt`, `:pii_detected`,
     #   `:secret_leaked`, `:risk_score`, `:reason`, or `{ error: String }` if
-    #   the hook raised or returned something other than a Hash.
+    #   the hook raised or returned something other than a Hash or schema
+    #   model.
     private_class_method def self.run_ai_analysis(analyzer, text, context)
-      result = analyzer.call(text, context)
-      return { error: "ai_analyzer must return a Hash" } unless result.is_a?(Hash)
+      result = normalize_ai_analysis(analyzer.call(text, context))
+      unless result
+        return { error: "ai_analyzer must return a Hash or a schema model with deep_to_h/to_h" }
+      end
 
-      sanitized = result.slice(:injection_attempt, :pii_detected, :secret_leaked, :risk_score, :reason)
+      sanitized = AI_ANALYSIS_KEYS.each_with_object({}) do |key, output|
+        if result.key?(key)
+          output[key] = result[key]
+        elsif result.key?(key.to_s)
+          output[key] = result[key.to_s]
+        end
+      end
       %i[injection_attempt pii_detected secret_leaked].each do |key|
         next unless sanitized.key?(key)
         return { error: "ai_analyzer #{key} must be true or false" } unless [true, false].include?(sanitized[key])
@@ -258,6 +275,25 @@ module Olyx
       sanitized
     rescue => e
       { error: e.message.to_s[0..200] }
+    end
+
+    # OpenAI structured-output objects implement `#deep_to_h`; accepting that
+    # protocol keeps the core independent of the optional OpenAI SDK. A plain
+    # `#to_h` fallback supports other schema libraries with the same shape.
+    #
+    # @param value [Object]
+    # @return [Hash, nil]
+    private_class_method def self.normalize_ai_analysis(value)
+      return value if value.is_a?(Hash)
+
+      converted =
+        if value.respond_to?(:deep_to_h)
+          value.deep_to_h
+        elsif value.respond_to?(:to_h)
+          value.to_h
+        end
+
+      converted if converted.is_a?(Hash)
     end
 
     # @param check [Hash] the current `injection` check.

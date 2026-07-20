@@ -8,6 +8,7 @@ safety:
 - Secret and internal-endpoint detection
 - Input-length enforcement
 - Optional semantic analysis through a caller-supplied AI hook
+- Optional OpenAI Responses API connector with native schema models
 - Optional Rootly incident notification
 
 The core checks run in-process and have no runtime gem dependencies.
@@ -137,7 +138,8 @@ transformation.
 
 ## AI analyzer hook
 
-The optional hook receives `(text, context)` and returns a Hash:
+The optional hook receives `(text, context)` and returns a Hash or a schema
+model implementing `deep_to_h`/`to_h`:
 
 ```ruby
 hook = lambda do |text, context|
@@ -160,6 +162,81 @@ one.
 
 The hook receives raw input. If it calls a third-party model, the caller is
 responsible for data-residency, privacy, and vendor-trust requirements.
+
+### OpenAI structured-output connector
+
+Add the official SDK only in applications that use this connector:
+
+```ruby
+gem "openai", "~> 0.62"
+```
+
+```ruby
+require "openai"
+require "olyx/guardrails"
+require "olyx/guardrails/integrations/openai_analyzer"
+
+openai = OpenAI::Client.new(api_key: ENV.fetch("OPENAI_API_KEY"))
+
+analyzer = Olyx::Guardrails::Integrations::OpenAIAnalyzer.new(
+  client: openai,
+  model: ENV.fetch("OPENAI_MODEL"),
+  request_options: { timeout: 15, max_retries: 1 }
+)
+
+result = Olyx::Guardrails.check(input, ai_analyzer: analyzer)
+```
+
+The connector sends the built-in
+`OpenAIAnalyzer::AnalysisSchema < OpenAI::BaseModel` through the Responses API
+and consumes the SDK's parsed schema-model object. Requests default to
+`store: false`; refusals, API failures, and missing parsed output are bounded
+under `result[:ai_analysis][:error]` without clearing local findings.
+
+A custom OpenAI schema model can be supplied with `schema:`. It should expose
+the analyzer fields shown above; unknown fields are discarded by
+`Guardrails.check`.
+
+#### Model compatibility and minimum
+
+The connector has no model allowlist or baked-in default. It forwards String or
+Symbol model identifiers unchanged, so aliases, dated snapshots, and fine-tuned
+model IDs work when the selected model supports both:
+
+1. text output through `v1/responses`; and
+2. Structured Outputs.
+
+That capability check—not a particular model name—is the technical minimum.
+The API returns an error under `result[:ai_analysis][:error]` when the selected
+model cannot satisfy it. Verify both features on the
+[OpenAI model catalog](https://developers.openai.com/api/docs/models) because
+model availability and capabilities change independently of this gem.
+
+Do not use models whose catalog entry says **Structured outputs: Not
+supported**. This excludes GPT-3.5 Turbo, GPT-4, GPT-4 Turbo, Realtime models,
+and specialized image, video, audio, transcription, speech, embedding, and
+moderation models. JSON mode is not used as a fallback because valid JSON alone
+does not guarantee this connector's schema.
+
+For the broadest model portability, leave `response_options: {}`. Parameters
+such as `temperature`, reasoning effort, verbosity, and tool configuration are
+model-specific and can make an otherwise compatible model reject the request.
+Custom and fine-tuned models remain compatible only when their effective model
+supports Structured Outputs; custom schemas must also stay within that model's
+supported JSON Schema subset.
+
+Mini and nano text models that support Structured Outputs are technically
+compatible; model size is not rejected in code. However, schema conformance
+only guarantees the output shape, not correct security classification.
+Therefore, do not establish a production minimum from cost, latency, or a
+successful schema response alone. Require representative adversarial
+evaluations for false negatives, false positives, refusals, latency, and cost.
+Keep the local deterministic findings authoritative. OpenAI's
+[Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
+also notes that structured responses can still contain mistakes.
+
+The core gem still supports Ruby 3.1. The optional official OpenAI SDK currently
+requires Ruby 3.2 or newer.
 
 ## Component APIs
 

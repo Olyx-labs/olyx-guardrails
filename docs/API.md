@@ -84,7 +84,8 @@ A hook receives:
 ]
 ```
 
-It may return:
+It may return a Hash or a schema-model object implementing `deep_to_h`/`to_h`.
+String and Symbol keys are accepted. The normalized shape is:
 
 ```ruby
 {
@@ -99,6 +100,72 @@ It may return:
 Finding fields must be real Boolean values. Non-finite scores are ignored.
 Exceptions and malformed responses are returned as a bounded `:error` under
 `:ai_analysis`.
+
+## `Integrations::OpenAIAnalyzer`
+
+Load the optional connector explicitly:
+
+```ruby
+require "openai"
+require "olyx/guardrails/integrations/openai_analyzer"
+
+analyzer = Olyx::Guardrails::Integrations::OpenAIAnalyzer.new(
+  client: OpenAI::Client.new,
+  model: ENV.fetch("OPENAI_MODEL"),
+  schema: nil,             # defaults to the built-in OpenAI::BaseModel schema
+  store: false,
+  request_options: nil,
+  response_options: {}
+)
+
+Olyx::Guardrails.check(input, ai_analyzer: analyzer)
+```
+
+The connector calls `client.responses.create` with `text:` set to an OpenAI
+schema model, then returns the parsed model from the response's output content.
+The built-in schema requires all five analyzer fields. Pass another
+`OpenAI::BaseModel` subclass through `schema:` to customize field descriptions
+or composition while retaining the analyzer contract.
+
+`response_options` accepts additional Responses API parameters, but cannot
+replace `model`, `input`, `text`, `store`, or `request_options`. A refusal or
+response without parsed structured output raises internally and is recorded by
+`Guardrails.check` under `:ai_analysis[:error]`. The connector is non-streaming.
+
+The `openai` gem is optional and is loaded lazily. Constructing a connector
+without an injected client/schema gives a clear `LoadError` when the SDK is not
+installed.
+
+### OpenAI model contract
+
+`model:` accepts a non-empty String or Symbol and is forwarded unchanged.
+There is intentionally no static model allowlist: aliases, snapshots,
+fine-tuned IDs, and future text models can be used without a library release.
+
+The selected model must provide text output on `v1/responses` and support
+Structured Outputs. Models that only support Chat Completions, JSON mode, or a
+specialized endpoint are not compatible. In particular, do not configure
+GPT-3.5 Turbo, GPT-4, GPT-4 Turbo, Realtime, image/video generation,
+audio/transcription/speech, embedding, or moderation models as the minimum for
+this connector.
+
+Check the current [OpenAI model
+catalog](https://developers.openai.com/api/docs/models) before deployment;
+capabilities and availability are intentionally not frozen into this library.
+
+Leave `response_options` empty for the most portable configuration.
+Temperature, reasoning, verbosity, and tool parameters are not uniform across
+model families. A custom or fine-tuned identifier is compatible only when its
+effective model supports Structured Outputs, and custom schemas must stay
+within that model's supported JSON Schema subset.
+
+Mini and nano models are accepted when they meet the API capability contract.
+Structured Outputs guarantees schema conformance, not that the model classified
+adversarial input correctly. Establish the production minimum with versioned
+evaluation thresholds—including false-negative, false-positive, refusal,
+latency, and cost targets—not merely model size or a successful request.
+OpenAI documents that [Structured Outputs can still contain semantic
+mistakes](https://developers.openai.com/api/docs/guides/structured-outputs#handling-mistakes).
 
 ## `PiiScrubber`
 

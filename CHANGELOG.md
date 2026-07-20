@@ -42,6 +42,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   matrix.
 - Added public security, contribution, conduct, ownership, dependency-update,
   and repository hygiene configuration.
+- AI analyzer results now accept schema-model objects implementing
+  `deep_to_h`/`to_h`, including string-keyed OpenAI structured outputs.
+- The OpenAI connector is model-ID agnostic, accepts String and Symbol aliases,
+  snapshots, and fine-tuned identifiers, and defines compatibility by
+  Responses API plus Structured Outputs support instead of a model allowlist.
+
+### Added
+- Optional `Integrations::OpenAIAnalyzer` connector for the official OpenAI
+  Ruby SDK and Responses API. It ships a strict `OpenAI::BaseModel` schema,
+  consumes `content.parsed`, defaults to `store: false`, and degrades refusals
+  or malformed responses into the existing defense-in-depth AI error path.
+- `examples/openai_analyzer.rb` demonstrates the native OpenAI schema-model
+  integration without adding an OpenAI dependency to the core gem.
 
 ## [0.2.0] - 2026-07-16
 
