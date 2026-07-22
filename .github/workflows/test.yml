@@ -21,7 +21,7 @@ jobs:
       matrix:
         ruby: ["3.4", "4.0"]
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
         with:
           ruby-version: ${{ matrix.ruby }}
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
         with:
           ruby-version: "3.4"
@@ -72,7 +72,7 @@ jobs:
           - rails: "8.1"
             gemfile: gemfiles/rails_8_1.gemfile
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
         with:
           ruby-version: "3.4"
