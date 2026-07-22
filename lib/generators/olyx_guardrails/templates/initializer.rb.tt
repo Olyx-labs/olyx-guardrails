@@ -1,0 +1,16 @@
+# frozen_string_literal: true
+
+Olyx::Guardrails::Rails.configure do |config|
+  config.enabled = true
+  config.policy_path = Rails.root.join("config/olyx_guardrails.yml")
+
+  # Optional semantic analyzer. Keep deterministic findings authoritative.
+  config.ai_analyzer = nil
+
+  # Handlers receive sanitized, immutable events. Keep this empty when
+  # ActiveSupport::Notifications is sufficient for your application.
+  config.notifier_handlers = {}
+
+  # Prevent common AI input parameter names from appearing in Rails logs.
+  config.filter_parameters = %i[prompt system_prompt ai_input llm_input]
+end

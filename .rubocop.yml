@@ -1,0 +1,66 @@
+plugins:
+  - rubocop-minitest
+  - rubocop-rake
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.4
+  SuggestExtensions: false
+  Exclude:
+    - 'gemfiles/**/*'
+    - 'vendor/**/*'
+    - 'tmp/**/*'
+
+Naming/RescuedExceptionsVariableName:
+  PreferredName: error
+
+# examples/ files are single-file walkthroughs showing multiple Rails
+# integration points side by side on purpose, meant to be read together and
+# copied piecemeal — splitting each class into its own file would defeat
+# that.
+Style/OneClassPerFile:
+  Exclude:
+    - 'examples/**/*'
+    - 'test/rails_integration_test.rb'
+
+# The OpenAI method is the SDK schema DSL itself; splitting its declarations
+# would obscure the external contract without reducing executable complexity.
+# Contract test methods keep each behavior and its related assertions together.
+Metrics/MethodLength:
+  Exclude:
+    - 'lib/olyx/guardrails/integrations/openai/schema_registry.rb'
+    - 'test/**/*'
+
+# Public configuration objects intentionally expose explicit keyword contracts.
+# Replacing these signatures with untyped option hashes would weaken the API.
+Metrics/ParameterLists:
+  Exclude:
+    - 'lib/olyx/guardrails/integrations/openai_analyzer.rb'
+    - 'lib/olyx/guardrails/integrations/openai_analyzer_configuration.rb'
+    - 'lib/olyx/guardrails/policy.rb'
+    - 'lib/olyx/guardrails/policy_rule.rb'
+
+# Security patterns are kept as single auditable regex literals. Reflowing them
+# can change their semantics or make review harder.
+Layout/LineLength:
+  Exclude:
+    - 'lib/olyx/guardrails/pii/pattern_catalog.rb'
+    - 'lib/olyx/guardrails/secrets/**/*_patterns.rb'
+
+# Contract tests intentionally verify several fields from one result. Production
+# complexity remains governed by the strict Flog and RubyCritic gates.
+Metrics/AbcSize:
+  Exclude:
+    - 'test/**/*'
+Metrics/ClassLength:
+  Exclude:
+    - 'test/**/*'
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - 'test/**/*'
+Metrics/PerceivedComplexity:
+  Exclude:
+    - 'test/**/*'
+Minitest/MultipleAssertions:
+  Exclude:
+    - 'test/**/*'

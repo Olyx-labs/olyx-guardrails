@@ -1,0 +1,6 @@
+---
+# Exemptions are deliberately empty. Add one only when a public DSL or
+# metaprogramming macro is clearer than an extracted implementation. Every
+# entry must use Flog's fully-qualified method name and explain that constraint.
+methods: {}
+
