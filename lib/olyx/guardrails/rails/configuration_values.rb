@@ -2,7 +2,6 @@
 
 require_relative '../policy'
 require_relative 'filter_parameters'
-require_relative 'path_value'
 
 module Olyx
   module Guardrails
@@ -18,7 +17,10 @@ module Olyx
         end
 
         def path(value)
-          PathValue.call(value)
+          normalized = value.respond_to?(:to_path) ? value.to_path : value
+          return normalized.dup.freeze if normalized.is_a?(String) && !normalized.empty?
+
+          raise ArgumentError, 'Rails policy_path must be a path-like value'
         end
 
         def filter_parameters(value)
