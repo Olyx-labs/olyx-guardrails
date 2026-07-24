@@ -1,0 +1,13 @@
+/.bundle/
+/vendor/
+gemfiles/.bundle/
+gemfiles/vendor/
+/.claude/
+/.ruby-lsp/
+/coverage/
+/doc/
+/pkg/
+/tmp/rubycritic/
+/*.gem
+/.yardoc/
+.DS_Store

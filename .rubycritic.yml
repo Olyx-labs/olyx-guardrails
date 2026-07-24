@@ -1,0 +1,10 @@
+---
+paths:
+  - lib/
+formats:
+  - console
+# Keep a small margin below the measured score so normal churn metadata does
+# not make the same source tree fail after it is committed.
+minimum_score: 95
+no_browser: true
+deduplicate_symlinks: true

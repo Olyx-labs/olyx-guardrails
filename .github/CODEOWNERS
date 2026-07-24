@@ -1,0 +1,18 @@
+# Detection logic, policy engine, and other core APIs are plain Ruby with no
+# Rails dependency. Reviewing these paths does not require Rails expertise.
+/lib/olyx/guardrails/pii/ @mosesnjoroge
+/lib/olyx/guardrails/secrets/ @mosesnjoroge
+/lib/olyx/guardrails/policy/ @mosesnjoroge
+/lib/olyx/guardrails/policy_rule/ @mosesnjoroge
+/lib/olyx/guardrails/text/ @mosesnjoroge
+/lib/olyx/guardrails/checks/ @mosesnjoroge
+
+# Rails adapters and the install generator require Rails knowledge to review
+# correctly — boot lifecycle, Railtie, ActiveJob/ActionCable/ActiveModel
+# integration.
+/lib/olyx/guardrails/rails/ @mosesnjoroge
+/lib/olyx/guardrails/railtie.rb @mosesnjoroge
+/lib/generators/ @mosesnjoroge
+
+# Fallback for everything else.
+* @mosesnjoroge

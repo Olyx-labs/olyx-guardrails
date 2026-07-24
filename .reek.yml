@@ -1,0 +1,72 @@
+---
+# Keyword booleans are part of the public API and read as explicit policy
+# choices at call sites (for example, `block_secrets: true`).
+detectors:
+  BooleanParameter:
+    enabled: false
+
+  # Risk scoring intentionally maps independent Boolean signals to weights.
+  ControlParameter:
+    enabled: false
+
+  # Olyx::Guardrails is reopened across implementation files but documented
+  # canonically in lib/olyx/guardrails.rb. Repeating that namespace comment in
+  # every file would create drift without documenting the enclosed component.
+  IrresponsibleModule:
+    exclude:
+      - Olyx::Guardrails
+
+  # The notifier passes one immutable incident context through its payload
+  # builders; introducing a data object would obscure this small integration.
+  DataClump:
+    enabled: false
+
+  # Public keyword APIs may expose up to seven independently documented options.
+  LongParameterList:
+    max_params: 8
+    overrides:
+      initialize:
+        max_params: 8
+
+  # Boundary adapters validate and serialize values owned by external callers;
+  # referring primarily to those arguments is their responsibility.
+  FeatureEnvy:
+    enabled: false
+
+  # Duck-typed protocol checks are deliberate at optional integration
+  # boundaries where loading vendor classes would defeat lazy dependencies.
+  ManualDispatch:
+    enabled: false
+
+  # Validation methods are intentionally exception-based and do not have a
+  # parallel non-raising form.
+  MissingSafeMethod:
+    enabled: false
+
+  # Two-level iteration is expected for message/content-block and
+  # pattern/match traversal. Deeper nesting remains a failure.
+  NestedIterators:
+    max_allowed_nesting: 2
+
+  # Security scanners naturally group a bounded catalog of named patterns.
+  TooManyConstants:
+    max_constants: 12
+
+  # Adapter configuration is intentionally stored as immutable request fields.
+  TooManyInstanceVariables:
+    max_instance_variables: 8
+
+  # Reek's default of five statements is too restrictive for validation and
+  # serialization boundaries. Methods above twelve statements still fail.
+  TooManyStatements:
+    max_statements: 12
+
+  # `nil` is a documented value for optional clients, schemas, and analyzers;
+  # explicit checks make those API contracts clearer than truthiness.
+  NilCheck:
+    enabled: false
+
+  # This library is organized around stateless scanners and sanitizers; utility
+  # class methods are the intended design rather than misplaced object behavior.
+  UtilityFunction:
+    enabled: false

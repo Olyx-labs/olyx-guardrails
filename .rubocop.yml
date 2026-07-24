@@ -1,0 +1,80 @@
+plugins:
+  - rubocop-minitest
+  - rubocop-rake
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.4
+  SuggestExtensions: false
+  Exclude:
+    - 'gemfiles/**/*'
+    - 'vendor/**/*'
+    - 'tmp/**/*'
+
+Naming/RescuedExceptionsVariableName:
+  PreferredName: error
+
+# examples/ files are single-file walkthroughs showing multiple Rails
+# integration points side by side on purpose, meant to be read together and
+# copied piecemeal — splitting each class into its own file would defeat
+# that.
+Style/OneClassPerFile:
+  Exclude:
+    - 'examples/**/*'
+    - 'test/rails_integration_test.rb'
+
+# Contract test methods keep each behavior and its related assertions together.
+Metrics/MethodLength:
+  Exclude:
+    - 'test/**/*'
+
+# Public configuration objects intentionally expose explicit keyword contracts.
+# Replacing these signatures with untyped option hashes would weaken the API.
+Metrics/ParameterLists:
+  Exclude:
+    - 'lib/olyx/guardrails/policy.rb'
+    - 'lib/olyx/guardrails/policy_rule.rb'
+    - 'lib/olyx/guardrails/rails/configuration.rb'
+
+# Security patterns are kept as single auditable regex literals. Reflowing them
+# can change their semantics or make review harder.
+Layout/LineLength:
+  Exclude:
+    - 'lib/olyx/guardrails/pii/pattern_catalog.rb'
+    - 'lib/olyx/guardrails/secrets/**/*_patterns.rb'
+
+# Contract tests intentionally verify several fields from one result; test
+# complexity is intentionally unbounded. Production thresholds are calibrated
+# against this codebase's measured distribution (empirical max at calibration
+# time: AbcSize 9.43, Cyclomatic/Perceived 6.0, ClassLength 49 lines), not
+# RuboCop's looser defaults. ClassLength is the structural proxy for limiting
+# total responsibility within one production class. Scope is lib/**/*.rb:
+# examples/ are copy-paste walkthroughs, and script/ is internal tooling that
+# is not shipped in the gem.
+Metrics/AbcSize:
+  Max: 10
+  Exclude:
+    - 'test/**/*'
+    - 'examples/**/*'
+    - 'script/**/*'
+Metrics/ClassLength:
+  Max: 60
+  Exclude:
+    - 'test/**/*'
+    - 'examples/**/*'
+    - 'script/**/*'
+Metrics/CyclomaticComplexity:
+  Max: 7
+  Exclude:
+    - 'test/**/*'
+    - 'examples/**/*'
+    - 'script/**/*'
+Metrics/PerceivedComplexity:
+  Max: 7
+  Exclude:
+    - 'test/**/*'
+    - 'examples/**/*'
+    - 'script/**/*'
+Minitest/MultipleAssertions:
+  Exclude:
+    - 'test/**/*'
