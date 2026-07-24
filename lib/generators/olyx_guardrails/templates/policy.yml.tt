@@ -1,0 +1,45 @@
+development:
+  name: development
+  max_input_length: 10000
+  block_pii: false
+  block_injections: true
+  block_secrets: false
+  llm_failure_mode: allow
+  secret_patterns: []
+  rules: []
+
+test:
+  name: test
+  max_input_length: 10000
+  block_pii: true
+  block_injections: true
+  block_secrets: true
+  llm_failure_mode: block
+  secret_patterns: []
+  rules: []
+
+production:
+  name: production
+  max_input_length: 10000
+  block_pii: true
+  block_injections: true
+  block_secrets: true
+  llm_failure_mode: block
+  # Replace this empty array with regular-expression source strings:
+  #
+  # secret_patterns:
+  #   - 'company-token-[a-z0-9]{24}'
+  secret_patterns: []
+  # Replace this empty array with organization restrictions:
+  #
+  # rules:
+  #   - name: confidential_projects
+  #     description: Internal project names must not enter AI requests
+  #     terms:
+  #       - 'Project Falcon'
+  #     match: whole_word
+  #     patterns:
+  #       - '\bPF-[0-9]{4}\b'
+  #     block: true
+  #     replacement: '[CONFIDENTIAL_PROJECT]'
+  rules: []

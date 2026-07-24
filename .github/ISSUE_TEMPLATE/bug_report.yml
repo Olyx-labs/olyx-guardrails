@@ -1,0 +1,53 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not report vulnerabilities here. Follow SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Gem version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: ruby
+    attributes:
+      label: Ruby version and platform
+      placeholder: ruby 3.4.10 on arm64-darwin
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use synthetic data only; never paste real credentials or PII.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Synthetic policy or Rails configuration
+      description: Remove credentials, endpoints, personal data, and customer content.
+      render: ruby
+  - type: textarea
+    id: environment
+    attributes:
+      label: Relevant framework and dependency versions
+      description: Include Rails, Bundler, and adapter versions when applicable.
+      render: shell

@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'pathname'
+require 'rubygems'
+
+ROOT = Pathname(__dir__).join('..').expand_path
+SPECIFICATION = Gem::Specification.load(ROOT.join('olyx-guardrails.gemspec').to_s)
+
+def run!(*command)
+  return if system(*command)
+
+  abort "Command failed: #{command.join(' ')}"
+end
+
+Dir.chdir(ROOT) do
+  requirement = SPECIFICATION.required_ruby_version
+  abort "Ruby #{RUBY_VERSION} does not satisfy #{requirement}" unless requirement.satisfied_by?(Gem.ruby_version)
+
+  run!('bundle', 'install') unless system('bundle', 'check')
+  run!('bundle', 'exec', 'appraisal', 'install')
+end
+
+puts 'Development dependencies are ready. Run bin/ci before opening a pull request.'

@@ -1,0 +1,84 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.4", "4.0"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Test
+        run: COVERAGE=true bundle exec rake test
+      - name: Check Ruby syntax
+        run: find lib test examples -name "*.rb" -exec ruby -c {} \;
+      - name: Build gem
+        if: matrix.ruby == '4.0'
+        run: gem build olyx-guardrails.gemspec
+
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Enforce complete quality gate
+        run: bundle exec rake quality
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Check locked dependencies against current advisories
+        run: bundle exec bundle-audit check --update
+
+  rails:
+    name: Rails ${{ matrix.rails }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BUNDLE_GEMFILE: ${{ matrix.gemfile }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rails: "8.0"
+            gemfile: gemfiles/rails_8_0.gemfile
+          - rails: "8.1"
+            gemfile: gemfiles/rails_8_1.gemfile
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Test Rails integration
+        run: bundle exec rake test

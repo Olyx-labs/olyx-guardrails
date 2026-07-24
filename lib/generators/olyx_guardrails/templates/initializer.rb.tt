@@ -1,0 +1,16 @@
+# frozen_string_literal: true
+
+Olyx::Guardrails::Rails.configure(
+  enabled: true,
+  policy_path: Rails.root.join("config/olyx_guardrails.yml"),
+
+  # Optional provider-agnostic semantic hook. Keep deterministic findings authoritative.
+  llm_provider: nil,
+
+  # Handlers receive sanitized, immutable events. Keep this empty when
+  # ActiveSupport::Notifications is sufficient for your application.
+  notifier_handlers: {},
+
+  # Prevent common AI input parameter names from appearing in Rails logs.
+  filter_parameters: %i[prompt system_prompt  llm_input]
+)

@@ -1,0 +1,174 @@
+# frozen_string_literal: true
+
+require_relative 'test_helper'
+
+class PiiScrubberTest < Minitest::Test
+  def test_scrubs_email
+    assert_equal 'contact [EMAIL] for details',
+                 Olyx::Guardrails::PiiScrubber.scrub('contact user@example.com for details')
+  end
+
+  def test_scrubs_ssn
+    assert_equal 'my ssn is [SSN]', Olyx::Guardrails::PiiScrubber.scrub('my ssn is 123-45-6789')
+  end
+
+  def test_scrubs_luhn_valid_canadian_sin
+    assert_equal 'my sin is [SIN]', Olyx::Guardrails::PiiScrubber.scrub('my sin is 046 454 286')
+  end
+
+  def test_scrubs_luhn_valid_canadian_sin_with_hyphens
+    assert_equal 'my sin is [SIN]', Olyx::Guardrails::PiiScrubber.scrub('my sin is 130-692-544')
+  end
+
+  def test_does_not_scrub_luhn_invalid_nine_digit_number
+    text = 'reference number 123456789 confirmed'
+
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_sin_and_ssn_are_distinguished_by_grouping
+    assert_equal 'ssn [SSN] sin [SIN]', Olyx::Guardrails::PiiScrubber.scrub('ssn 123-45-6789 sin 046-454-286')
+  end
+
+  def test_scrubs_api_token
+    assert_equal 'key=[TOKEN]', Olyx::Guardrails::PiiScrubber.scrub('key=sk-abcdefghijklmnop')
+  end
+
+  def test_scrubs_bearer_token
+    assert_equal 'auth=[TOKEN]', Olyx::Guardrails::PiiScrubber.scrub('auth=Bearer abcdefghijklmnop')
+  end
+
+  def test_scrubs_ipv4
+    assert_equal 'host=[IP]', Olyx::Guardrails::PiiScrubber.scrub('host=192.168.1.1')
+  end
+
+  def test_passes_clean_text_unchanged
+    text = 'What is the capital of France?'
+
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_returns_non_string_unchanged
+    assert_equal 42, Olyx::Guardrails::PiiScrubber.scrub(42)
+  end
+
+  def test_scrub_messages_with_detection_detects_pii
+    messages = [{ 'role' => 'user', 'content' => 'email me at test@example.com' }]
+    result = Olyx::Guardrails::PiiScrubber.scrub_messages_with_detection(messages)
+
+    assert result[:detected]
+    assert_equal 'email me at [EMAIL]', result[:messages].first['content']
+  end
+
+  def test_scrub_messages_with_detection_clean_input
+    messages = [{ 'role' => 'user', 'content' => 'hello world' }]
+    result = Olyx::Guardrails::PiiScrubber.scrub_messages_with_detection(messages)
+
+    refute result[:detected]
+  end
+
+  def test_scrub_messages_preserves_non_text_content
+    messages = [{ role: :user, content: 42 }]
+    result = Olyx::Guardrails::PiiScrubber.scrub_messages_with_detection(messages)
+
+    refute result[:detected]
+    assert_equal messages, result[:messages]
+  end
+
+  def test_scrubs_passport_with_context
+    result = Olyx::Guardrails::PiiScrubber.scrub('my passport number: AB1234567')
+
+    assert_includes result, '[PASSPORT]'
+    refute_includes result, 'AB1234567'
+  end
+
+  def test_scrubs_iban
+    text = 'please wire to GB29NWBK60161331926819'
+
+    assert_includes Olyx::Guardrails::PiiScrubber.scrub(text), '[IBAN]'
+  end
+
+  def test_scrubs_dob_slash_format
+    assert_includes Olyx::Guardrails::PiiScrubber.scrub('DOB: 01/15/1990'), '[DOB]'
+  end
+
+  def test_scrubs_dob_spelled_out
+    assert_includes Olyx::Guardrails::PiiScrubber.scrub('born on January 15, 1990'), '[DOB]'
+  end
+
+  def test_clean_text_without_pii_unchanged
+    text = 'The weather in Paris is lovely in spring.'
+
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_scrubs_valid_card_number
+    assert_equal 'card [CARD] on file', Olyx::Guardrails::PiiScrubber.scrub('card 4111111111111111 on file')
+  end
+
+  def test_does_not_redact_luhn_invalid_numeric_id
+    # 17 digits, outside PHONE_PATTERN's max range (16 digits), so this
+    # isolates the CARD_PATTERN + Luhn behavior specifically.
+    text = 'Reference #12345678901234567 confirmed'
+
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_card_redaction_preserves_surrounding_whitespace
+    result = Olyx::Guardrails::PiiScrubber.scrub('card 4111-1111-1111-1111 was charged')
+
+    assert_equal 'card [CARD] was charged', result
+  end
+
+  def test_scrubs_phone_with_leading_plus
+    assert_equal 'call [PHONE] now', Olyx::Guardrails::PiiScrubber.scrub('call +15551234567 now')
+  end
+
+  def test_phone_pattern_does_not_grab_substring_of_longer_digit_run
+    text = 'Reference #12345678901234567 confirmed'
+
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_does_not_redact_bare_numeric_identifier_as_phone
+    text = 'Order 20260101123456 is ready'
+
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_does_not_redact_invalid_ipv4_address
+    text = 'Version 999.999.999.999 is not an address'
+
+    assert_equal text, Olyx::Guardrails::PiiScrubber.scrub(text)
+  end
+
+  def test_scrubs_valid_public_ipv4_address
+    assert_equal 'host=[IP]', Olyx::Guardrails::PiiScrubber.scrub('host=203.0.113.10')
+  end
+
+  def test_scrubs_array_content_blocks_and_preserves_key_style
+    messages = [
+      {
+        role: :user,
+        content: [
+          { type: 'text', text: 'email test@example.com' },
+          { type: 'image', source: 'unchanged' }
+        ]
+      }
+    ]
+
+    result = Olyx::Guardrails::PiiScrubber.scrub_messages_with_detection(messages)
+
+    assert result[:detected]
+    assert result[:messages].first.key?(:content)
+    refute result[:messages].first.key?('content')
+    assert_equal 'email [EMAIL]', result[:messages].first[:content].first[:text]
+    assert_equal messages.first[:content].last, result[:messages].first[:content].last
+  end
+
+  def test_scrub_messages_rejects_malformed_input
+    assert_raises(ArgumentError) do
+      Olyx::Guardrails::PiiScrubber.scrub_messages(nil)
+    end
+  end
+end
