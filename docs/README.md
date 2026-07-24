@@ -16,7 +16,7 @@ After completing the quick start, choose the guide that matches the next task:
 | [Rails integration](RAILS.md) | Protect controllers, jobs, GraphQL, Action Cable, uploads, callbacks, and model attributes |
 | [Operations](OPERATIONS.md) | Choose failure modes, consume telemetry, configure notifications, and understand deployment boundaries |
 | [API reference](API.md) | Verify signatures, defaults, return values, exceptions, and immutable contracts |
-| [Releasing](RELEASING.md) | Validate, publish, and verify a maintainer release |
+| [Releasing](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RELEASING.md) | Validate, publish, and verify a maintainer release |
 
 ## Runnable examples
 
@@ -53,4 +53,4 @@ Public behavior changes require updates to:
 4. the changelog.
 
 Security-sensitive documentation follows the private reporting process in
-[SECURITY.md](../SECURITY.md).
+[security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy).

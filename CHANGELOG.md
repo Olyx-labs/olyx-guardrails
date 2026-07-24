@@ -142,4 +142,4 @@ Initial public release.
   compatibility contract.
 - Least-privilege, SHA-pinned CI actions; CodeQL and OpenSSF Scorecard
   scanning; a private vulnerability-reporting process (see
-  [SECURITY.md](SECURITY.md)).
+  [security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy)).
