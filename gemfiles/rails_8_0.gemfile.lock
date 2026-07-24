@@ -1,7 +1,7 @@
 PATH
   remote: ..
   specs:
-    olyx-guardrails (1.1.0)
+    olyx-guardrails (1.1.1)
       base64 (>= 0.2, < 1)
 
 GEM
