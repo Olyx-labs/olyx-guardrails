@@ -3,6 +3,18 @@
 All notable changes to olyx-guardrails are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.1] - 2026-07-24
+
+### Changed
+
+- The published gem now contains only runtime code, generator templates, and
+  its README, changelog, and license. Guides and runnable examples remain
+  available from the canonical repository.
+- Removed two internal, one-use indirection layers from Rails policy-path
+  normalization and policy redaction. Public behavior is unchanged.
+- The package manifest is now tested as an exact consumer-facing contract, and
+  path-like Rails policy configuration has direct boundary coverage.
+
 ## [1.1.0] - 2026-07-23
 
 ### Changed
@@ -142,4 +154,4 @@ Initial public release.
   compatibility contract.
 - Least-privilege, SHA-pinned CI actions; CodeQL and OpenSSF Scorecard
   scanning; a private vulnerability-reporting process (see
-  [SECURITY.md](SECURITY.md)).
+  [security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy)).

@@ -8,6 +8,9 @@ internal_rdoc_pattern = 'lib/olyx/guardrails/(?=.*\.rb$)(?!' \
                         'rails/(?:configuration|enforcer|controller|graphql|action_cable|job|' \
                         'active_job_handler|active_model_validator|upload)\.rb$)'
 
+generator_templates = Dir['lib/generators/**/*.tt'].freeze
+runtime_files = Dir['lib/**/*.rb'].freeze
+
 Gem::Specification.new do |s|
   s.name        = 'olyx-guardrails'
   s.version     = Olyx::Guardrails::VERSION
@@ -32,11 +35,13 @@ Gem::Specification.new do |s|
     'rubygems_mfa_required' => 'true'
   }
 
-  s.files         = Dir['lib/**/*.rb'] + Dir['lib/generators/**/*'].select { |path| File.file?(path) } +
-                    Dir['examples/*.rb'] + Dir['docs/*.md'] +
-                    %w[LICENSE README.md CHANGELOG.md SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md]
+  s.files = (
+    runtime_files +
+    generator_templates +
+    %w[CHANGELOG.md LICENSE README.md]
+  ).sort
   s.require_paths = ['lib']
-  s.extra_rdoc_files = ['README.md', 'CHANGELOG.md'] + Dir['docs/*.md']
+  s.extra_rdoc_files = %w[CHANGELOG.md README.md]
   s.rdoc_options = [
     '--main', 'README.md',
     '--exclude', 'lib/generators/',

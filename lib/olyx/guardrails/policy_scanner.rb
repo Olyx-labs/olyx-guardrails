@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'policy/finding_presenter'
 require_relative 'policy/match_collector'
 require_relative 'policy/redaction_result'
 require_relative 'policy/scan_result'
-require_relative 'policy_redactor'
 
 module Olyx
   # Policy-driven safety checks and redaction for Ruby applications.
