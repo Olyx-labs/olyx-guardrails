@@ -110,11 +110,11 @@ open-source projects:
 Pull requests run with read-only GitHub token permissions, including
 contributions from forks. CI never requires repository secrets. The protected
 default branch requires the supported Ruby and Rails matrix, dependency audit,
-quality gate, CodeQL analysis, and resolved review conversations. The project
-currently has one maintainer, so independent approval is encouraged but not a
-branch-rule requirement; every merge still goes through a pull request after
-the required checks pass. Maintainers squash merged pull requests, and GitHub
-deletes the source branch after merge.
+quality gate, CodeQL analysis, resolved review conversations, and valid commit
+signatures. The project currently has one maintainer, so independent approval
+is encouraged but not a branch-rule requirement; every merge still goes through
+a pull request after the required checks pass. Maintainers squash merged pull
+requests, and GitHub deletes the source branch after merge.
 
 Maintainers may ask for a pull request to be split when unrelated behavior,
 refactoring, or generated dependency changes make review unsafe. Force-pushing
