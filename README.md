@@ -28,7 +28,7 @@ discover model calls, or send application content to a third party.
 
 Rails is optional. The standalone Ruby API does not load Rails.
 
-The 1.0 release initially supports Rails 8.0 and 8.1. Only the listed Rails
+The 1.1 release supports Rails 8.0 and 8.1. Only the listed Rails
 series are tested and supported. When a series reaches upstream end-of-life,
 a subsequent gem release may remove it instead of maintaining framework
 security fixes independently. Every support change is recorded in the

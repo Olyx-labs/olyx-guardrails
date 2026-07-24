@@ -2,6 +2,10 @@
 
 Describe the user-visible outcome and why the change is needed.
 
+## Related issue
+
+Link the issue or explain why this small change does not require one.
+
 ## Security and compatibility
 
 - [ ] No real credentials, PII, internal endpoints, or customer content are included.

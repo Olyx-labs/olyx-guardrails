@@ -90,14 +90,34 @@ constants remain outside that manifest and are not compatibility commitments.
 
 ## Pull requests
 
-1. Open an issue first for substantial API or policy changes.
-2. Keep each pull request focused and include tests for behavior changes.
-3. Add adversarial regression tests for security-sensitive fixes.
+Contributions follow the same fork-and-pull-request workflow used by established
+open-source projects:
+
+1. Open an issue first for substantial API, policy, or architectural changes.
+   Small fixes may go directly to a pull request.
+2. Fork the repository and create a focused branch from the latest `master`.
+   Do not work directly on `master`.
+3. Add tests for behavior changes and adversarial regression tests for
+   security-sensitive fixes.
 4. Update README, API reference, examples, and changelog when public behavior
    changes.
-5. Confirm tests, RuboCop, RubyCritic, syntax checks, and gem packaging pass
-   locally — plus the Appraisal Rails matrix if the change touches
+5. Run `bin/ci` locally, plus the Appraisal Rails matrix when the change touches
    `lib/olyx/guardrails/rails/` or `lib/generators/`.
+6. Open a draft pull request early when maintainer feedback would prevent
+   rework. Mark it ready only when its description and validation checklist are
+   complete.
+
+Pull requests run with read-only GitHub token permissions, including
+contributions from forks. CI never requires repository secrets. The protected
+default branch requires the supported Ruby and Rails matrix, dependency audit,
+quality gate, CodeQL analysis, resolved review conversations, and maintainer
+approval. Maintainers squash approved pull requests, and GitHub deletes the
+source branch after merge.
+
+Maintainers may ask for a pull request to be split when unrelated behavior,
+refactoring, or generated dependency changes make review unsafe. Force-pushing
+a contributor branch is acceptable while responding to review; GitHub
+dismisses stale approvals when the protected branch changes.
 
 Maintainer releases follow [docs/RELEASING.md](docs/RELEASING.md). Do not
 publish an artifact that has not completed that runbook.
