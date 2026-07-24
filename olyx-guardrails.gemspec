@@ -8,20 +8,6 @@ internal_rdoc_pattern = 'lib/olyx/guardrails/(?=.*\.rb$)(?!' \
                         'rails/(?:configuration|enforcer|controller|graphql|action_cable|job|' \
                         'active_job_handler|active_model_validator|upload)\.rb$)'
 
-consumer_documentation = %w[
-  docs/API.md
-  docs/OPERATIONS.md
-  docs/POLICIES.md
-  docs/RAILS.md
-  docs/README.md
-].freeze
-consumer_examples = %w[
-  examples/custom_policy.rb
-  examples/local_llm_provider.rb
-  examples/notifier.rb
-  examples/rails_opt_in.rb
-  examples/ruby_only.rb
-].freeze
 generator_templates = Dir['lib/generators/**/*.tt'].freeze
 runtime_files = Dir['lib/**/*.rb'].freeze
 
@@ -52,12 +38,10 @@ Gem::Specification.new do |s|
   s.files = (
     runtime_files +
     generator_templates +
-    consumer_examples +
-    consumer_documentation +
     %w[CHANGELOG.md LICENSE README.md]
   ).sort
   s.require_paths = ['lib']
-  s.extra_rdoc_files = %w[CHANGELOG.md README.md] + consumer_documentation
+  s.extra_rdoc_files = %w[CHANGELOG.md README.md]
   s.rdoc_options = [
     '--main', 'README.md',
     '--exclude', 'lib/generators/',

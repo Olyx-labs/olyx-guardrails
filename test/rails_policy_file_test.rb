@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'tmpdir'
+require 'pathname'
 require_relative 'test_helper'
 require_relative '../lib/olyx/guardrails/rails'
 
@@ -68,6 +69,25 @@ class RailsPolicyFileTest < Minitest::Test
         policy: Olyx::Guardrails::Policy.default,
         policy_path: 'policy.yml'
       )
+    end
+  end
+
+  def test_configuration_normalizes_path_like_policy_source
+    configuration = Olyx::Guardrails::Rails::Configuration.new(
+      policy_path: Pathname.new('config/olyx_guardrails.yml')
+    )
+
+    assert_equal 'config/olyx_guardrails.yml', configuration.policy_path
+    assert_predicate configuration.policy_path, :frozen?
+  end
+
+  def test_configuration_rejects_invalid_policy_paths
+    ['', Object.new, Struct.new(:to_path).new(nil)].each do |policy_path|
+      error = assert_raises(ArgumentError) do
+        Olyx::Guardrails::Rails::Configuration.new(policy_path: policy_path)
+      end
+
+      assert_equal 'Rails policy_path must be a path-like value', error.message
     end
   end
 

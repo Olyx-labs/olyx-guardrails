@@ -6,46 +6,19 @@ class PackageManifestTest < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
   SPECIFICATION = Gem::Specification.load(File.join(ROOT, 'olyx-guardrails.gemspec'))
 
-  CONSUMER_DOCUMENTATION = %w[
-    docs/API.md
-    docs/OPERATIONS.md
-    docs/POLICIES.md
-    docs/RAILS.md
-    docs/README.md
+  CORE_FILES = %w[
+    CHANGELOG.md
+    LICENSE
+    README.md
   ].freeze
-  REPOSITORY_ONLY_FILES = %w[
-    CODE_OF_CONDUCT.md
-    CONTRIBUTING.md
-    SECURITY.md
-    docs/RELEASING.md
-  ].freeze
+  EXPECTED_FILES = (
+    Dir[File.join(ROOT, 'lib/**/*.rb'), File.join(ROOT, 'lib/generators/**/*.tt')]
+      .map { |path| path.delete_prefix("#{ROOT}/") } +
+    CORE_FILES
+  ).sort.freeze
 
-  def test_manifest_contains_only_existing_files
-    missing_files = SPECIFICATION.files.reject do |path|
-      File.file?(File.join(ROOT, path))
-    end
-
-    assert_empty missing_files
-  end
-
-  def test_manifest_includes_consumer_documentation
-    missing_documentation = CONSUMER_DOCUMENTATION - SPECIFICATION.files
-
-    assert_empty missing_documentation
-  end
-
-  def test_manifest_excludes_repository_only_files
-    packaged_repository_files = REPOSITORY_ONLY_FILES & SPECIFICATION.files
-
-    assert_empty packaged_repository_files
-  end
-
-  def test_manifest_excludes_development_and_generated_artifacts
-    disallowed_files = SPECIFICATION.files.grep(
-      %r{\A(?:\.github|coverage|gemfiles|pkg|script|test|tmp|vendor)/|(?:\.gem|\.lock)\z}
-    )
-
-    assert_empty disallowed_files
+  def test_manifest_is_exact_consumer_surface
+    assert_equal EXPECTED_FILES, SPECIFICATION.files
   end
 
   def test_packaged_markdown_has_no_links_to_excluded_files

@@ -97,8 +97,9 @@ The default policy:
 - has no custom restricted-content rules.
 
 Production applications should construct an explicit policy instead of relying
-on defaults. See the [Policies guide](docs/POLICIES.md) for the complete rule
-language and YAML examples.
+on defaults. See the
+[Policies guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/POLICIES.md)
+for the complete rule language and YAML examples.
 
 ## Rails quick start
 
@@ -137,9 +138,10 @@ end
 Rails enforcement is opt-in. The gem does not scan parameters, callbacks,
 uploads, jobs, GraphQL operations, or Action Cable messages globally.
 
-The [Rails integration guide](docs/RAILS.md) covers every adapter, boot-time
-configuration, safe YAML loading, instrumentation payloads, and notification
-delivery.
+The
+[Rails integration guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RAILS.md)
+covers every adapter, boot-time configuration, safe YAML loading,
+instrumentation payloads, and notification delivery.
 
 ## Choose the right entry point
 
@@ -191,19 +193,22 @@ The gem owns normalization, validation, failure handling, and safe result
 merging. The application owns model selection, prompting, authentication,
 timeouts, retries, and transport. LLM analysis findings can add a violation but cannot clear a deterministic finding.
 
-See the [provider contract](docs/API.md#llm-provider-contract) and the
-[local HTTP example](examples/local_llm_provider.rb). The example works with
-an application-owned classifier sidecar backed by any inference runtime. Read
-the [model-suitability criteria](docs/OPERATIONS.md#model-suitability) before
-using semantic analysis as a blocking production control.
+See the
+[provider contract](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/API.md#llm-provider-contract)
+and
+[local HTTP example](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/local_llm_provider.rb).
+The example works with an application-owned classifier sidecar backed by any
+inference runtime. Read the
+[model-suitability criteria](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/OPERATIONS.md#model-suitability)
+before using semantic analysis as a blocking production control.
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Policies and restricted content](docs/POLICIES.md)
-- [Rails integration](docs/RAILS.md)
-- [Operations and production behavior](docs/OPERATIONS.md)
-- [API reference](docs/API.md)
+- [Documentation index](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/README.md)
+- [Policies and restricted content](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/POLICIES.md)
+- [Rails integration](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RAILS.md)
+- [Operations and production behavior](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/OPERATIONS.md)
+- [API reference](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/API.md)
 - [Release runbook](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RELEASING.md)
 - [Security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy)
 - [Contributing](https://github.com/Olyx-labs/olyx-guardrails/blob/master/CONTRIBUTING.md)
@@ -211,11 +216,11 @@ using semantic analysis as a blocking production control.
 
 Examples:
 
-- [Framework-free Ruby](examples/ruby_only.rb)
-- [Custom policy](examples/custom_policy.rb)
-- [Rails opt-in boundaries](examples/rails_opt_in.rb)
-- [Local LLM provider](examples/local_llm_provider.rb)
-- [Notifier handlers](examples/notifier.rb)
+- [Framework-free Ruby](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/ruby_only.rb)
+- [Custom policy](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/custom_policy.rb)
+- [Rails opt-in boundaries](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/rails_opt_in.rb)
+- [Local LLM provider](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/local_llm_provider.rb)
+- [Notifier handlers](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/notifier.rb)
 
 The framework-free, custom-policy, and notifier examples run directly. The
 Rails example is application-context code, and the local provider example
@@ -239,9 +244,11 @@ boundary or data-loss-prevention system.
   centralized policy rollout, and audit retention remain application or
   platform responsibilities.
 
-The [operations guide](docs/OPERATIONS.md) describes failure modes, data
-handling, risk scores, concurrency, and deployment boundaries. Report security
-issues through the [security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy),
+The
+[operations guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/OPERATIONS.md)
+describes failure modes, data handling, risk scores, concurrency, and
+deployment boundaries. Report security issues through the
+[security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy),
 not the public issue tracker.
 
 ## Development
