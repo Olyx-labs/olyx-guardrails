@@ -4,7 +4,7 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'rails', '~> 8.1.0', require: false
+gem 'rails', '~> 8.1.3', require: false
 
 group :development, :test do
   gem 'appraisal', '~> 2.5'
