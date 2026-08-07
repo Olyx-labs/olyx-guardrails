@@ -3,6 +3,12 @@
 All notable changes to olyx-guardrails are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.3] - 2026-08-07
+
+### Changed
+
+- Added the Bundler release task expected by the trusted publishing workflow.
+
 ## [1.1.2] - 2026-08-07
 
 ### Changed
