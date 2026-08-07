@@ -1,6 +1,7 @@
 # Olyx Guardrails
 
-[![Gem Version](https://badge.fury.io/rb/olyx-guardrails.svg)](https://rubygems.org/gems/olyx-guardrails)
+[![RubyGems](https://img.shields.io/gem/v/olyx-guardrails?label=rubygems)](https://rubygems.org/gems/olyx-guardrails)
+[![Release](https://img.shields.io/github/v/release/Olyx-labs/olyx-guardrails?label=release)](https://github.com/Olyx-labs/olyx-guardrails/releases/latest)
 [![Test](https://github.com/Olyx-labs/olyx-guardrails/actions/workflows/test.yml/badge.svg)](https://github.com/Olyx-labs/olyx-guardrails/actions/workflows/test.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Olyx-labs/olyx-guardrails/badge)](https://securityscorecards.dev/viewer/?uri=github.com/Olyx-labs/olyx-guardrails)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -28,7 +29,7 @@ discover model calls, or send application content to a third party.
 
 Rails is optional. The standalone Ruby API does not load Rails.
 
-The 1.1 release supports Rails 8.0 and 8.1. Only the listed Rails
+The 1.1 release line supports Rails 8.0 and 8.1. Only the listed Rails
 series are tested and supported. When a series reaches upstream end-of-life,
 a subsequent gem release may remove it instead of maintaining framework
 security fixes independently. Every support change is recorded in the
