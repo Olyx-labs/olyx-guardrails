@@ -3,6 +3,12 @@
 All notable changes to olyx-guardrails are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.2] - 2026-08-07
+
+### Changed
+
+- Added a tag-based RubyGems release workflow using trusted publishing.
+
 ## [1.1.1] - 2026-07-24
 
 ### Changed
