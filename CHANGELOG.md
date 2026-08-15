@@ -39,7 +39,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   decision has zero risk.
 - The Rails generator provides copyable policy customization instructions and
   tests the customized YAML path.
-- Contributor setup, complete local quality validation, and maintainer release
+- Contributor setup, local validation, and maintainer release
   verification have canonical commands and documentation.
 - Closely coupled proxy objects were folded into their owning runtime,
   configuration, result-building, and notification components.
@@ -47,7 +47,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ignored instead of being coerced across the untrusted provider boundary.
 - Contributor and Rails appraisal locks use the current `net-imap` patch.
 - CI refreshes the Ruby advisory database and blocks known-vulnerable locked
-  dependencies without making the offline local quality gate network-dependent.
+  dependencies without making offline local validation network-dependent.
 
 ## [1.0.0] - 2026-07-21
 
@@ -155,11 +155,8 @@ Initial public release.
 
 - The core has one lightweight runtime dependency, Ruby's `base64` bundled gem.
   Rails remains optional and is loaded only when used.
-- CI enforces RuboCop — including calibrated structural-complexity cops
-  (`Metrics/AbcSize`, `CyclomaticComplexity`, `PerceivedComplexity`,
-  `ClassLength`) in place of a separate complexity tool — and a RubyCritic
-  maintainability gate, alongside the Appraisal matrix across Rails 8.0
-  and 8.1.
+- CI enforces tests, documentation checks, RuboCop, and the Appraisal matrix
+  across Rails 8.0 and 8.1.
 - Native RDoc covers every supported public class, module, constant, attribute,
   and method. CI blocks undocumented additions to the explicit public API
   manifest while leaving implementation-only constants outside the

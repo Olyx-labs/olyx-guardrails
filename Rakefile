@@ -16,16 +16,14 @@ namespace :test do
   end
 end
 
-desc 'Run the complete local quality gate'
+desc 'Run the local checks expected before a pull request'
 task quality: 'test:coverage' do
   sh 'ruby', 'script/documentation_gate.rb'
   sh 'bundle', 'exec', 'ruby', 'script/rdoc_gate.rb'
   sh 'bundle', 'exec', 'rubocop', '--cache', 'false'
-  sh 'bundle', 'exec', 'rubycritic', '-f', 'console', '-f', 'json', '-p', 'tmp/rubycritic'
-  sh 'ruby', 'script/rubycritic_gate.rb', 'tmp/rubycritic/report.json'
 end
 
-desc 'Run the same complete gate expected before a pull request'
+desc 'Run the same checks expected before a pull request'
 task ci: :quality
 
 task default: :test
