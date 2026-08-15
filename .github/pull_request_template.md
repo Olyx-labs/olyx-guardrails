@@ -17,6 +17,5 @@ Link the issue or explain why this small change does not require one.
 - [ ] Tests added or updated.
 - [ ] `bin/ci` passes.
 - [ ] The Rails Appraisal matrix passes when Rails or generator code changes.
-- [ ] RubyCritic's 95-point and strict per-file gates pass.
 - [ ] Ruby syntax checks pass.
 - [ ] README, API reference, examples, and changelog are updated when needed.
