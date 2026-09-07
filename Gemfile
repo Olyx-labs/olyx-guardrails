@@ -15,5 +15,5 @@ group :development, :test do
   gem 'rubocop-minitest', '~> 0.36'
   gem 'rubocop-rake', '~> 0.6'
   gem 'rubycritic', '~> 5.0'
-  gem 'simplecov', '~> 1.0'
+  gem 'simplecov', '~> 1.2'
 end
