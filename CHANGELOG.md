@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-02
+
 ### Changed
 
 - Prompt-injection normalization now scans long inputs in overlapping bounded
