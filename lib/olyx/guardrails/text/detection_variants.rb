@@ -12,16 +12,28 @@ module Olyx
       # Produces bounded single-layer variants for evasion-resistant detection.
       module DetectionVariants
         WINDOW = 20_000
+        OVERLAP = 256
         DECODERS = [HtmlDecoder, UrlDecoder, UnicodeEscapeDecoder, Base64Decoder].freeze
 
         module_function
 
         def call(value)
-          source = value.to_s[0...WINDOW]
+          chunks(value.to_s).flat_map { |source| variants(source) }.uniq
+        end
+
+        def variants(source)
           normalized = Normalizer.call(source)
           decoded = DECODERS.map { |decoder| decoder.call(normalized) }
           [source, normalized, *decoded].uniq
         end
+
+        def chunks(source)
+          return [source] if source.length <= WINDOW
+
+          step = WINDOW - OVERLAP
+          (0...source.length).step(step).map { |offset| source[offset, WINDOW] }
+        end
+        private_class_method :chunks, :variants
       end
     end
   end

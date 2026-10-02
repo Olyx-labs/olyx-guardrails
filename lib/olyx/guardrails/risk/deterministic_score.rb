@@ -9,10 +9,8 @@ module Olyx
       module DeterministicScore
         module_function
 
-        def call(checks, ordered_checks)
-          score = CheckWeights.call(checks)
-          score += BLOCKED_RISK_WEIGHT if ordered_checks.any? { |check| !check[:allowed] }
-          score.clamp(0.0, 1.0).round(4)
+        def call(checks)
+          CheckWeights.call(checks).clamp(0.0, 1.0).round(4)
         end
       end
     end

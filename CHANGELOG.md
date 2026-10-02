@@ -3,6 +3,25 @@
 All notable changes to olyx-guardrails are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- Prompt-injection normalization now scans long inputs in overlapping bounded
+  windows instead of ignoring content after the first 20,000 characters.
+- Narrowed role-play matching so ordinary agent prompts do not block by
+  default.
+- Provider exceptions return a stable public error instead of exposing the
+  provider's exception message.
+- Confidentiality labels are no longer classified as credentials or used to
+  redact an entire input. Applications can enforce those labels with policy
+  rules when required.
+- Risk scores now describe findings independently from the policy's blocking
+  configuration.
+- Removed redundant scanner passes and consolidated internal configuration and
+  matching layers.
+- Simplified the public quality gate to tests, documentation, and RuboCop.
+
 ## [1.1.3] - 2026-08-07
 
 ### Changed
