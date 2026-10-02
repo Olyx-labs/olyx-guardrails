@@ -3,6 +3,6 @@
 module Olyx
   module Guardrails
     # The current gem version, following semantic versioning.
-    VERSION = '1.1.3'
+    VERSION = '1.2.0'
   end
 end
