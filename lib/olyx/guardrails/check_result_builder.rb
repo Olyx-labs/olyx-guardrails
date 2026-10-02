@@ -39,7 +39,7 @@ module Olyx
       end
 
       def risk(checks, ordered, analysis)
-        { risk_score: RiskScorer.call(checks, ordered, analysis), checks: ordered }
+        { risk_score: RiskScorer.call(checks, analysis), checks: ordered }
       end
 
       def analysis_result(analysis)

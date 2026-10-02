@@ -9,16 +9,6 @@ module Olyx
     module Secrets
       # Declarative catalog for built-in confidentiality and credential forms.
       module PatternCatalog
-        MARKERS = [
-          'confidential', 'proprietary', 'restricted', 'internal use only',
-          'not for distribution', 'do not share', 'do not distribute', 'top secret',
-          'trade secret', 'need to know', 'company confidential',
-          'attorney-client privilege', 'attorney client privilege', 'work product',
-          'privileged and confidential'
-        ].freeze
-        CONFIDENTIALITY = MARKERS.map do |marker|
-          Regexp.new(Regexp.escape(marker), Regexp::IGNORECASE)
-        end.freeze
         SIMPLE = {
           'private_network_address' => NetworkPatterns::PRIVATE_IP,
           'aws_access_key' => CloudCredentialPatterns::AWS_ACCESS_KEY,

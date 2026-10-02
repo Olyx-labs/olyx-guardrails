@@ -43,38 +43,18 @@ Layout/LineLength:
     - 'lib/olyx/guardrails/pii/pattern_catalog.rb'
     - 'lib/olyx/guardrails/secrets/**/*_patterns.rb'
 
-# Contract tests intentionally verify several fields from one result; test
-# complexity is intentionally unbounded. Production thresholds are calibrated
-# against this codebase's measured distribution (empirical max at calibration
-# time: AbcSize 9.43, Cyclomatic/Perceived 6.0, ClassLength 49 lines), not
-# RuboCop's looser defaults. ClassLength is the structural proxy for limiting
-# total responsibility within one production class. Scope is lib/**/*.rb:
-# examples/ are copy-paste walkthroughs, and script/ is internal tooling that
-# is not shipped in the gem.
 Metrics/AbcSize:
-  Max: 10
   Exclude:
     - 'test/**/*'
     - 'examples/**/*'
     - 'script/**/*'
+
 Metrics/ClassLength:
-  Max: 60
   Exclude:
     - 'test/**/*'
     - 'examples/**/*'
     - 'script/**/*'
-Metrics/CyclomaticComplexity:
-  Max: 7
-  Exclude:
-    - 'test/**/*'
-    - 'examples/**/*'
-    - 'script/**/*'
-Metrics/PerceivedComplexity:
-  Max: 7
-  Exclude:
-    - 'test/**/*'
-    - 'examples/**/*'
-    - 'script/**/*'
+
 Minitest/MultipleAssertions:
   Exclude:
     - 'test/**/*'

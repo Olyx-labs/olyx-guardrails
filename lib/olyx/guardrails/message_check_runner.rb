@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'check_pipeline'
-require_relative 'message_check_set'
+require_relative 'check_analyzer'
+require_relative 'check_result_builder'
+require_relative 'check_set'
 require_relative 'message_source'
 require_relative 'policy'
 require_relative 'validation'
@@ -16,8 +17,9 @@ module Olyx
 
         Validation.callable_or_nil!(llm_provider, name: 'llm_provider')
         source = MessageSource.call(messages)
-        checks = MessageCheckSet.call(source, messages, policy: policy)
-        CheckPipeline.call(source, checks, policy: policy, llm_provider: llm_provider)
+        checks = CheckSet.call(source, policy: policy, messages: messages)
+        merged, analysis = CheckAnalyzer.call(checks, provider: llm_provider, source: source, policy: policy)
+        CheckResultBuilder.call(merged, analysis, policy)
       end
     end
   end

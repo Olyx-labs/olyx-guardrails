@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 require_relative 'policy/configuration_hash'
-require_relative 'policy/configuration'
+require_relative 'policy/name'
+require_relative 'policy/rule_collection'
+require_relative 'policy/secret_pattern_collection'
+require_relative 'enum_value'
+require_relative 'validation'
 
 module Olyx # :nodoc:
   module Guardrails
@@ -21,6 +25,27 @@ module Olyx # :nodoc:
     #
     # See docs/POLICIES.md for matching and replacement semantics.
     class Policy
+      LLM_FAILURE_MODE = EnumValue.new(
+        allowed: %i[allow block raise],
+        error: 'policy llm_failure_mode must be allow, block, or raise'
+      )
+      private_constant :LLM_FAILURE_MODE
+
+      # Returns the policy's stable String identifier.
+      attr_reader :name
+
+      # Returns the maximum accepted input length in Ruby characters.
+      attr_reader :max_input_length
+
+      # Returns +:allow+, +:block+, or +:raise+.
+      attr_reader :llm_failure_mode
+
+      # Returns the frozen custom secret regular-expression source Strings.
+      attr_reader :secret_patterns
+
+      # Returns the frozen PolicyRule collection.
+      attr_reader :rules
+
       # :call-seq:
       #   Policy.default -> Policy
       #
@@ -67,37 +92,25 @@ module Olyx # :nodoc:
         secret_patterns: [],
         rules: []
       )
-        @configuration = PolicyComponents::Configuration.new(
-          identity: [name, max_input_length],
-          blocking: [block_pii, block_injections, block_secrets],
-          restrictions: [llm_failure_mode, secret_patterns, rules]
-        )
+        @name = PolicyComponents::Name.call(name)
+        @max_input_length = Validation.non_negative_integer!(max_input_length, name: 'policy max_input_length')
+        @block_pii = Validation.boolean!(block_pii, name: 'policy block_pii')
+        @block_injections = Validation.boolean!(block_injections, name: 'policy block_injections')
+        @block_secrets = Validation.boolean!(block_secrets, name: 'policy block_secrets')
+        @llm_failure_mode = LLM_FAILURE_MODE.call(llm_failure_mode)
+        @secret_patterns = PolicyComponents::SecretPatternCollection.call(secret_patterns)
+        @rules = PolicyComponents::RuleCollection.call(rules)
         freeze
       end
 
-      # Returns the policy's stable String identifier.
-      def name = @configuration.identity.name
-
-      # Returns the maximum accepted input length in Ruby characters.
-      def max_input_length = @configuration.identity.max_input_length
-
-      # Returns +:allow+, +:block+, or +:raise+.
-      def llm_failure_mode = @configuration.restrictions.llm_failure_mode
-
-      # Returns the frozen custom secret regular-expression source Strings.
-      def secret_patterns = @configuration.restrictions.secret_patterns
-
-      # Returns the frozen PolicyRule collection.
-      def rules = @configuration.restrictions.rules
-
       # Returns whether PII findings block a decision.
-      def block_pii? = @configuration.blocking.pii?
+      def block_pii? = @block_pii
 
       # Returns whether prompt-injection findings block a decision.
-      def block_injections? = @configuration.blocking.injections?
+      def block_injections? = @block_injections
 
       # Returns whether secret findings block a decision.
-      def block_secrets? = @configuration.blocking.secrets?
+      def block_secrets? = @block_secrets
     end
   end
 end

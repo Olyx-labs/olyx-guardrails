@@ -39,7 +39,6 @@ The deterministic score uses fixed heuristic weights:
 | Secret | 0.25 |
 | Restricted-policy finding | 0.25 |
 | PII | 0.10 |
-| Any blocked check | 0.15 |
 
 The sum is clamped to `0.0..1.0` and rounded to four decimal places.
 
@@ -64,12 +63,13 @@ The policy controls provider failures:
 The default is `:allow`. Use `:block` or `:raise` when semantic analysis is a
 required control.
 
-Provider exceptions and malformed results become a bounded error:
+Provider exceptions become a stable error that does not expose exception
+messages. Malformed results use a bounded contract error:
 
 ```ruby
 {
   llm_analysis: {
-    error: "bounded error message"
+    error: "llm_provider failed"
   }
 }
 ```
@@ -299,9 +299,10 @@ encoding, and new attack strategies.
 ### Secrets
 
 Detection covers documented credential formats, JWTs, PEM private keys,
-credential-bearing database URLs, confidentiality markers, and private network
-endpoints. It cannot classify every high-entropy value or future provider
-format.
+credential-bearing database URLs, and private network endpoints. Generic
+classification labels such as `confidential` belong in application policy
+rules rather than credential detection. Secret detection cannot classify every
+high-entropy value or future provider format.
 
 ### PII
 

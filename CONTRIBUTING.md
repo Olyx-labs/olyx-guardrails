@@ -46,12 +46,10 @@ Ruby 3.4 or newer is supported. Changes must remain compatible with the oldest
 supported Ruby unless the same pull request deliberately changes the gem's
 requirement.
 
-RuboCop keeps style and complexity checks consistent across contributions.
-Prefer small, direct objects with clear names. Do not split cohesive code, hide
-behavior behind dynamic dispatch, or weaken a public API merely to satisfy a
-metric. When a public DSL or metaprogramming macro genuinely needs more room,
-use `# rubocop:disable` with an inline reason, or a file-level exclude in
-`.rubocop.yml` with a comment explaining the constraint.
+RuboCop configuration is public and runs in CI, following the convention used
+by established Ruby gems. Treat its findings as review signals: keep cohesive
+behavior together and use a narrowly documented exception when a rule makes
+the implementation harder to understand.
 
 ## Documentation
 
@@ -97,7 +95,7 @@ open-source projects:
 Pull requests run with read-only GitHub token permissions, including
 contributions from forks. CI never requires repository secrets. The protected
 default branch requires the supported Ruby and Rails matrix, dependency audit,
-CodeQL analysis, resolved review conversations, and valid commit signatures.
+CodeQL analysis, and resolved review conversations.
 The project currently has one maintainer, so independent approval is encouraged
 but not a branch-rule requirement; every merge still goes through a pull
 request after the required checks pass. Maintainers squash merged pull

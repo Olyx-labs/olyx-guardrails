@@ -32,8 +32,7 @@ module Olyx # :nodoc:
       #   SecretScanner.redact(text, custom_patterns: []) -> Hash
       #
       # Converts +text+ with +to_s+ and returns transformed +:text+, a +:leaked+
-      # Boolean, and safe +:findings+. A confidentiality marker redacts the
-      # complete input because the marker does not identify one safe span.
+      # Boolean, and safe +:findings+.
       def self.redact(text, custom_patterns: [])
         source = text.to_s
         findings = collect(source, custom_patterns)

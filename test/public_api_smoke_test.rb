@@ -404,7 +404,7 @@ class PublicApiSmokeTest < Minitest::Test
     hook = ->(_text, _ctx) { raise 'boom' }
     result = Olyx::Guardrails.check('clean input', llm_provider: hook)
 
-    assert_equal 'boom', result[:llm_analysis][:error]
+    assert_equal 'llm_provider failed', result[:llm_analysis][:error]
     assert result[:allowed], 'default llm_failure_mode (:allow) must preserve the deterministic result'
   end
 
@@ -570,11 +570,11 @@ class PublicApiSmokeTest < Minitest::Test
     refute_includes result[:text], 'ghp_zyxwvutsrqponmlkjihgfed'
   end
 
-  def test_secret_scanner_confidentiality_marker_redacts_whole_input
+  def test_secret_scanner_does_not_treat_confidentiality_labels_as_credentials
     text = 'This document is confidential and includes the Q3 roadmap details.'
     result = Olyx::Guardrails::SecretScanner.redact(text)
 
-    refute_includes result[:text], 'Q3 roadmap details'
+    assert_equal text, result[:text]
   end
 
   def test_secret_scanner_scan_bang_raises_blocked_with_findings
