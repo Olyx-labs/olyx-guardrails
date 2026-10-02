@@ -6,19 +6,18 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Olyx-labs/olyx-guardrails/badge)](https://securityscorecards.dev/viewer/?uri=github.com/Olyx-labs/olyx-guardrails)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Olyx Guardrails is an in-process safety boundary for Ruby and Rails
-applications that send or receive AI-generated content. It provides:
+In-process AI guardrails for Ruby and Rails. Detect, decide, and redact at the
+application boundary without proxying model traffic or sending content to Olyx.
 
-- PII and secret detection with explicit redaction;
-- prompt-injection and jailbreak detection, including adjacent-turn checks;
-- immutable, organization-specific restricted-content policies;
-- completed-input and completed-output decisions;
-- opt-in Rails adapters for common ingestion paths;
-- provider-agnostic semantic analysis through a callable LLM hook; and
-- sanitized notifications and Active Support instrumentation.
+## Features
 
-The deterministic checks run locally. The gem does not proxy model traffic,
-discover model calls, or send application content to a third party.
+- Detects PII, secrets, prompt injection, and multi-turn attacks.
+- Enforces immutable custom content policies.
+- Checks completed model inputs and outputs.
+- Adds opt-in Rails adapters, notifications, and instrumentation.
+- Accepts an application-owned LLM hook for semantic analysis.
+
+Deterministic checks run locally. Rails and semantic analysis are optional.
 
 ## Requirements
 
@@ -27,42 +26,23 @@ discover model calls, or send application content to a third party.
 | Ruby | 3.4 or newer |
 | Rails | 8.0 and 8.1 |
 
-Rails is optional. The standalone Ruby API does not load Rails.
-
-The 1.1 release line supports Rails 8.0 and 8.1. Only the listed Rails
-series are tested and supported. When a series reaches upstream end-of-life,
-a subsequent gem release may remove it instead of maintaining framework
-security fixes independently. Every support change is recorded in the
-changelog.
-
 ## Installation
 
-Add the gem to the application:
+Add the gem to your `Gemfile`:
 
 ```ruby
-gem "olyx-guardrails", "~> 1.1"
+gem "olyx-guardrails", "~> 1.2"
 ```
 
-Then install the bundle:
+Then run `bundle install`.
 
-```bash
-bundle install
-```
-
-The only runtime gem dependency is Ruby's `base64` bundled gem, used for
-bounded encoded-input detection.
-
-## Quick start
-
-Create one immutable policy and use it at the application boundary:
+## Usage
 
 ```ruby
 require "olyx/guardrails"
 
 policy = Olyx::Guardrails::Policy.new(
-  name: "customer-data-boundary",
-  max_input_length: 4_000,
-  block_pii: false,
+  name: "ai-boundary",
   block_injections: true,
   block_secrets: true,
   rules: [
@@ -76,51 +56,42 @@ policy = Olyx::Guardrails::Policy.new(
   ]
 )
 
-decision = Olyx::Guardrails.check(input, policy: policy)
+decision = Olyx::Guardrails.check(prompt, policy: policy)
 return forbidden unless decision[:allowed]
 
-safe_input = Olyx::Guardrails.redact(input, policy: policy)[:text]
-completion = LlmClient.complete(safe_input)
+safe_prompt = Olyx::Guardrails.redact(prompt, policy: policy)[:text]
+completion = LlmClient.complete(safe_prompt)
 
-output_decision = Olyx::Guardrails.check_output(completion, policy: policy)
-return invalid_output unless output_decision[:allowed]
+output = Olyx::Guardrails.check_output(completion, policy: policy)
+return invalid_output unless output[:allowed]
 ```
 
-`check` makes a decision and never transforms input. `redact` transforms
-recognized content and never makes an allow/block decision. Applications that
-need both operations call both explicitly.
+`check` returns a decision without changing content. `redact` transforms
+recognized content without making an allow/block decision. Call both when you
+need both behaviors.
 
-The default policy:
+The default policy limits input to 10,000 characters, blocks injection, reports
+PII and secrets, and defines no custom rules. Use an explicit policy in
+production. See the [policy guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/POLICIES.md)
+for all options.
 
-- limits input to 10,000 characters;
-- blocks detected injection attempts;
-- reports, but does not block, detected PII and secrets; and
-- has no custom restricted-content rules.
+### Rails
 
-Production applications should construct an explicit policy instead of relying
-on defaults. See the
-[Policies guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/POLICIES.md)
-for the complete rule language and YAML examples.
-
-## Rails quick start
-
-Generate an initializer and environment-keyed policy file:
+Generate the initializer and policy file:
 
 ```bash
 bin/rails generate olyx_guardrails:install
 ```
 
-Add the controller concern only where content crosses an AI boundary:
+Opt in only at controllers or other boundaries that handle AI content:
 
 ```ruby
 class AiRequestsController < ApplicationController
   include Olyx::Guardrails::Rails::Controller
 
   rescue_from Olyx::Guardrails::Blocked do |error|
-    render json: {
-      error: "input_rejected",
-      decision: error.decision
-    }, status: :unprocessable_entity
+    render json: { error: "input_rejected", decision: error.decision },
+           status: :unprocessable_entity
   end
 
   def create
@@ -136,138 +107,79 @@ class AiRequestsController < ApplicationController
 end
 ```
 
-Rails enforcement is opt-in. The gem does not scan parameters, callbacks,
-uploads, jobs, GraphQL operations, or Action Cable messages globally.
+The gem never scans Rails requests globally. See the
+[Rails guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RAILS.md)
+for controllers, jobs, GraphQL, Action Cable, uploads, and instrumentation.
 
-The
-[Rails integration guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RAILS.md)
-covers every adapter, boot-time configuration, safe YAML loading,
-instrumentation payloads, and notification delivery.
+### Entry points
 
-## Choose the right entry point
+| Boundary | Method |
+|---|---|
+| Plain text input | `Guardrails.check` |
+| Structured messages | `Guardrails.check_messages` |
+| Completed model output | `Guardrails.check_output` |
+| Plain text redaction | `Guardrails.redact` |
+| Completed output redaction | `Guardrails.redact_output` |
+| Rails exception flow | `Rails::Enforcer.check!` |
 
-| Boundary | Entry point | Behavior |
-|---|---|---|
-| Plain text input | `Guardrails.check` | Returns an allow/block decision |
-| Structured messages | `Guardrails.check_messages` | Adds adjacent-turn detection |
-| Completed model output | `Guardrails.check_output` | Explicit output decision |
-| Plain text transformation | `Guardrails.redact` | Returns redacted text |
-| Completed output transformation | `Guardrails.redact_output` | Explicit output transformation |
-| Rails exception flow | `Rails::Enforcer.check!` | Raises `Guardrails::Blocked` when rejected |
-| Low-level secret enforcement | `SecretScanner.scan!` | Raises `SecretScanner::Blocked` on a finding |
+Output methods operate on complete values; they do not inspect token streams.
 
-All completed-output methods operate on complete values. They do not inspect a
-token stream before content reaches the caller.
+### Optional semantic analysis
 
-## Optional LLM provider
-
-`llm_provider` accepts any callable object. It receives the raw text and a
-bounded context hash containing deterministic findings:
+Pass any callable as `llm_provider`:
 
 ```ruby
 provider = lambda do |text, context|
   LocalClassifier.call(text: text, signals: context)
 end
 
-policy = Olyx::Guardrails::Policy.new(llm_failure_mode: :block)
-
 result = Olyx::Guardrails.check(
-  input,
-  policy: policy,
+  prompt,
+  policy: Olyx::Guardrails::Policy.new(llm_failure_mode: :block),
   llm_provider: provider
 )
 ```
 
-The provider returns a hash or schema object containing any of:
+The application owns model selection, credentials, transport, timeouts, and
+retries. Provider results can add findings but cannot clear deterministic
+findings. See the
+[provider contract](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/API.md#llm-provider-contract).
 
-```ruby
-{
-  injection_attempt: false,
-  pii_detected: false,
-  secret_leaked: false,
-  risk_score: 0.2,
-  reason: "No semantic violation found"
-}
-```
-
-The gem owns normalization, validation, failure handling, and safe result
-merging. The application owns model selection, prompting, authentication,
-timeouts, retries, and transport. LLM analysis findings can add a violation but cannot clear a deterministic finding.
-
-See the
-[provider contract](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/API.md#llm-provider-contract)
-and
-[local HTTP example](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/local_llm_provider.rb).
-The example works with an application-owned classifier sidecar backed by any
-inference runtime. Read the
-[model-suitability criteria](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/OPERATIONS.md#model-suitability)
-before using semantic analysis as a blocking production control.
-
-## Documentation
-
-- [Documentation index](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/README.md)
-- [Policies and restricted content](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/POLICIES.md)
-- [Rails integration](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RAILS.md)
-- [Operations and production behavior](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/OPERATIONS.md)
-- [API reference](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/API.md)
-- [Release runbook](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RELEASING.md)
-- [Security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy)
-- [Contributing](https://github.com/Olyx-labs/olyx-guardrails/blob/master/CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-
-Examples:
-
-- [Framework-free Ruby](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/ruby_only.rb)
-- [Custom policy](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/custom_policy.rb)
-- [Rails opt-in boundaries](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/rails_opt_in.rb)
-- [Local LLM provider](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/local_llm_provider.rb)
-- [Notifier handlers](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/notifier.rb)
-
-The framework-free, custom-policy, and notifier examples run directly. The
-Rails example is application-context code, and the local provider example
-expects the documented classifier sidecar.
-
-## Security model and limitations
+## Security scope
 
 Olyx Guardrails is a defense-in-depth control, not a complete semantic security
 boundary or data-loss-prevention system.
 
-- Pattern-based detection can miss paraphrasing, translations, novel attacks,
-  unsupported homoglyphs, and nested encoding beyond the bounded normalization
-  pass.
-- PII support is strongest for documented North American and common
-  international formats.
-- Secret detection is format-based and cannot classify every high-entropy
-  string or future credential format.
-- Restricted-content rules are deterministic unless an application supplies an
-  LLM provider.
-- File parsing, authorization, streaming enforcement, distributed quotas,
-  centralized policy rollout, and audit retention remain application or
-  platform responsibilities.
+- Pattern matching can miss novel, translated, or deeply encoded attacks.
+- PII and secret detection cover documented formats, not every possible value.
+- File parsing, authorization, streaming enforcement, quotas, centralized
+  rollout, and audit retention remain application responsibilities.
 
-The
-[operations guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/OPERATIONS.md)
-describes failure modes, data handling, risk scores, concurrency, and
-deployment boundaries. Report security issues through the
-[security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy),
-not the public issue tracker.
+See the [operations guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/OPERATIONS.md)
+for production guidance. Report vulnerabilities through the
+[security policy](https://github.com/Olyx-labs/olyx-guardrails/security/policy).
+
+## Documentation
+
+- [Documentation index](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/README.md)
+- [Policies](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/POLICIES.md)
+- [Rails integration](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/RAILS.md)
+- [API reference](https://github.com/Olyx-labs/olyx-guardrails/blob/master/docs/API.md)
+- [Framework-free example](https://github.com/Olyx-labs/olyx-guardrails/blob/master/examples/ruby_only.rb)
+- [Changelog](CHANGELOG.md)
+- [Contributing](https://github.com/Olyx-labs/olyx-guardrails/blob/master/CONTRIBUTING.md)
 
 ## Development
-
-Run the same gates used by CI:
 
 ```bash
 bin/setup
 bin/ci
 ```
 
-The development bundle includes Rails so contributors exercise the integration
-from the default test suite; Rails remains an optional runtime dependency for
-gem consumers. The Rails compatibility matrix is managed with Appraisal. See
-[contribution guide](https://github.com/Olyx-labs/olyx-guardrails/blob/master/CONTRIBUTING.md)
-before submitting a change.
+Rails adapter changes must also pass `bundle exec appraisal rake test`. See
+[Contributing](https://github.com/Olyx-labs/olyx-guardrails/blob/master/CONTRIBUTING.md)
+for the complete workflow.
 
 ## License
 
-Olyx Guardrails is available under the
-[Apache License 2.0](LICENSE).
+Olyx Guardrails is available under the [Apache License 2.0](LICENSE).
