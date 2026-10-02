@@ -6,6 +6,8 @@ module Olyx
   module Guardrails
     # Normalizes and bounds responses from an untrusted optional LLM provider.
     class LlmAnalysis
+      PROVIDER_ERROR = 'llm_provider failed'
+
       def self.call(provider, text, context)
         new(provider, text, context).call
       end
@@ -18,8 +20,8 @@ module Olyx
 
       def call
         Llm::AnalysisPipeline.call(@provider.call(@text, @context))
-      rescue StandardError => error
-        { error: error.message.to_s[0..200] }
+      rescue StandardError
+        { error: PROVIDER_ERROR }
       end
     end
   end

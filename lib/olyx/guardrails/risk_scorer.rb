@@ -8,18 +8,17 @@ module Olyx
     # Computes the bounded heuristic risk score from merged check results and
     # an optional LLM provider score.
     class RiskScorer
-      def self.call(checks, ordered_checks, llm_result)
-        new(checks, ordered_checks, llm_result).call
+      def self.call(checks, llm_result)
+        new(checks, llm_result).call
       end
 
-      def initialize(checks, ordered_checks, llm_result)
+      def initialize(checks, llm_result)
         @checks = checks
-        @ordered_checks = ordered_checks
         @llm_result = llm_result
       end
 
       def call
-        deterministic = Risk::DeterministicScore.call(@checks, @ordered_checks)
+        deterministic = Risk::DeterministicScore.call(@checks)
         llm_risk = Risk::LlmScore.call(@llm_result)
         llm_risk ? [deterministic, llm_risk].max.round(4) : deterministic
       end

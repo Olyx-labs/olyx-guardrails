@@ -2,6 +2,7 @@
 
 require_relative 'finding_order'
 require_relative 'rule_matcher'
+require_relative '../text/mapped_normalization'
 
 module Olyx
   module Guardrails
@@ -11,7 +12,12 @@ module Olyx
         module_function
 
         def call(source, rules)
-          findings = rules.each_with_index.flat_map { |rule, index| RuleMatcher.call(source, rule, index) }
+          return [] if rules.empty?
+
+          normalized = Text::MappedNormalization.new(source)
+          findings = rules.each_with_index.flat_map do |rule, index|
+            RuleMatcher.call(source, normalized, rule, index)
+          end
           findings.uniq { |finding| FindingOrder.identity(finding) }.sort_by { |finding| FindingOrder.key(finding) }
         end
       end

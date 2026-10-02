@@ -3,7 +3,6 @@
 require_relative 'check_result_builder'
 require_relative 'check_analyzer'
 require_relative 'check_set'
-require_relative 'check_pipeline'
 require_relative 'policy'
 require_relative 'validation'
 
@@ -24,7 +23,10 @@ module Olyx
 
       def call
         checks = CheckSet.call(@source, policy: @policy)
-        CheckPipeline.call(@source, checks, policy: @policy, llm_provider: @llm_provider)
+        merged, analysis = CheckAnalyzer.call(
+          checks, provider: @llm_provider, source: @source, policy: @policy
+        )
+        CheckResultBuilder.call(merged, analysis, @policy)
       end
 
       private

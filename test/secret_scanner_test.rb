@@ -3,11 +3,11 @@
 require_relative 'test_helper'
 
 class SecretScannerTest < Minitest::Test
-  def test_detects_confidentiality_marker
+  def test_does_not_treat_a_confidentiality_label_as_a_credential
     result = Olyx::Guardrails::SecretScanner.scan('This document is confidential')
 
-    assert result[:leaked]
-    assert(result[:findings].any? { |f| f[:category] == 'confidentiality_marker' })
+    refute result[:leaked]
+    assert_empty result[:findings]
   end
 
   def test_detects_internal_endpoint
@@ -177,10 +177,11 @@ class SecretScannerTest < Minitest::Test
     assert_equal 2, result[:findings].length
   end
 
-  def test_confidentiality_marker_redacts_whole_input
-    result = Olyx::Guardrails::SecretScanner.redact('CONFIDENTIAL: database password is hunter2')
+  def test_confidentiality_label_does_not_destroy_the_input
+    input = 'This proposal is not confidential; share it publicly'
+    result = Olyx::Guardrails::SecretScanner.redact(input)
 
-    assert_equal '[REDACTED]', result[:text]
+    assert_equal input, result[:text]
   end
 
   def test_invalid_custom_pattern_raises

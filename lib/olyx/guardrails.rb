@@ -39,7 +39,6 @@ module Olyx
     SECRET_RISK_WEIGHT    = Risk::Weights::FINDINGS.fetch(:secret).last # :nodoc:
     PII_RISK_WEIGHT       = Risk::Weights::FINDINGS.fetch(:pii).last # :nodoc:
     POLICY_RISK_WEIGHT    = Risk::Weights::FINDINGS.fetch(:policy).last # :nodoc:
-    BLOCKED_RISK_WEIGHT   = Risk::Weights::BLOCKED # :nodoc:
 
     # :call-seq:
     #   check(input, policy: Policy.default, llm_provider: nil) -> Hash

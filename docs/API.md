@@ -291,8 +291,8 @@ first 12 hexadecimal characters of the SHA-256 digest.
 `policy_findings` uses the [policy finding](#policy-finding) contract.
 `findings` contains safe secret findings.
 
-A confidentiality marker causes `text` to become `[REDACTED]` because the
-marker does not identify one safe span.
+Generic labels such as `confidential` are not credentials. Configure a policy
+rule when those labels should trigger blocking or whole-value replacement.
 
 ## `Olyx::Guardrails::Policy`
 
@@ -577,8 +577,7 @@ Returns:
 }
 ```
 
-Every non-overlapping secret span is replaced. A confidentiality marker
-redacts the complete input.
+Every non-overlapping secret span is replaced.
 
 ### `.scan!`
 
@@ -644,8 +643,7 @@ Built-in categories include:
 - `database_url`;
 - `stripe_key`;
 - `google_key`;
-- `azure_storage_key`;
-- `confidentiality_marker`; and
+- `azure_storage_key`; and
 - `custom_pattern`.
 
 ## `Olyx::Guardrails::Notifier`

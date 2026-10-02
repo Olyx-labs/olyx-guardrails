@@ -3,15 +3,8 @@
 require 'active_support/notifications'
 require 'forwardable'
 require_relative '../guardrails'
-require_relative 'rails/active_job_handler'
-require_relative 'rails/action_cable'
 require_relative 'rails/active_model_validator'
-require_relative 'rails/controller'
-require_relative 'rails/enforcer'
-require_relative 'rails/graphql'
-require_relative 'rails/job'
 require_relative 'rails/runtime'
-require_relative 'rails/upload'
 
 module Olyx # :nodoc:
   module Guardrails
@@ -28,6 +21,14 @@ module Olyx # :nodoc:
     # boundary adapter explicitly.
     module Rails
       extend SingleForwardable
+
+      autoload :ActiveJobHandler, File.join(__dir__, 'rails/active_job_handler')
+      autoload :ActionCable, File.join(__dir__, 'rails/action_cable')
+      autoload :Controller, File.join(__dir__, 'rails/controller')
+      autoload :Enforcer, File.join(__dir__, 'rails/enforcer')
+      autoload :GraphQL, File.join(__dir__, 'rails/graphql')
+      autoload :Job, File.join(__dir__, 'rails/job')
+      autoload :Upload, File.join(__dir__, 'rails/upload')
 
       def self.runtime # :nodoc:
         @runtime ||= Runtime.new
