@@ -12,7 +12,7 @@ group :development, :test do
   gem 'minitest', '~> 5.0'
   gem 'rake', '~> 13.0'
   gem 'rubocop', '~> 1.86'
-  gem 'rubocop-minitest', '~> 0.36'
+  gem 'rubocop-minitest', '~> 0.41'
   gem 'rubocop-rake', '~> 0.6'
   gem 'simplecov', '~> 1.0'
 end
