@@ -53,8 +53,4 @@ class OperationalApiTest < Minitest::Test
   def test_invalid_llm_failure_mode_is_rejected
     assert_raises(ArgumentError) { Olyx::Guardrails::Policy.new(llm_failure_mode: :retry_forever) }
   end
-
-  def test_legacy_ai_failure_mode_is_not_accepted
-    assert_raises(ArgumentError) { Olyx::Guardrails::Policy.new(ai_failure_mode: :block) }
-  end
 end

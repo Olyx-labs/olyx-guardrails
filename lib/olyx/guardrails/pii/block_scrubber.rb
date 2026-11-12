@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative 'hash_key'
+require_relative '../message_content'
 require_relative 'text_scrubber'
 
 module Olyx
@@ -13,7 +13,7 @@ module Olyx
         def call(block)
           return [block, false] unless block.is_a?(Hash)
 
-          key = HashKey.call(block, 'text')
+          key = MessageContent.key(block, 'text')
           text = block[key] if key
           return [block, false] unless text.is_a?(String)
 
