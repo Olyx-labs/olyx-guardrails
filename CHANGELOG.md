@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-11
+
+### Changed
+
+- Simplify evaluation, message handling, LLM analysis, and numeric date validation
+  while preserving the public result contract.
+- Require patched Rails test bundles: 8.1.4.1 or newer on Rails 8.1 and
+  8.0.5.2 or newer on Rails 8.0, with Rack >= 3.2.8 and Crass >= 1.0.8.
+- Document request-body limits, host allowlists, and trusted proxy headers for
+  applications consuming the gem.
+
 ## [1.2.0] - 2026-10-02
 
 ### Changed
