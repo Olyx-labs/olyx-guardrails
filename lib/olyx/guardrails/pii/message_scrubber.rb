@@ -2,7 +2,7 @@
 
 require_relative '../validation'
 require_relative 'content_scrubber'
-require_relative 'hash_key'
+require_relative '../message_content'
 
 module Olyx
   module Guardrails
@@ -18,7 +18,7 @@ module Olyx
         end
 
         def scrub_message(message)
-          key = HashKey.call(message, 'content')
+          key = MessageContent.key(message, 'content')
           return [message, false] unless key
 
           redacted, changed = ContentScrubber.call(message[key])

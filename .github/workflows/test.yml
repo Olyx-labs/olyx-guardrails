@@ -34,8 +34,8 @@ jobs:
         if: matrix.ruby == '4.0'
         run: gem build olyx-guardrails.gemspec
 
-  quality:
-    name: Quality
+  lint:
+    name: Lint and docs
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,7 +44,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - name: Enforce complete quality gate
+      - name: Run local checks
         run: bundle exec rake quality
 
   dependency-audit:
@@ -80,5 +80,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      - name: Audit Rails integration dependencies
+        run: bundle exec bundle-audit check --update
       - name: Test Rails integration
         run: bundle exec rake test

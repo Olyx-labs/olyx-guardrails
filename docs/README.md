@@ -16,7 +16,7 @@ After completing the quick start, choose the guide that matches the next task:
 | [Rails integration](RAILS.md) | Protect controllers, jobs, GraphQL, Action Cable, uploads, callbacks, and model attributes |
 | [Operations](OPERATIONS.md) | Choose failure modes, consume telemetry, configure notifications, and understand deployment boundaries |
 | [API reference](API.md) | Verify signatures, defaults, return values, exceptions, and immutable contracts |
-| [Releasing](RELEASING.md) | Validate, publish, and verify a maintainer release |
+| [Releasing](RELEASING.md) | Validate, tag, publish, and verify a maintainer release |
 
 ## Runnable examples
 
