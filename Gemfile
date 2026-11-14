@@ -4,16 +4,17 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'rails', '~> 8.1.3', require: false
+gem 'rails', '~> 8.1.4', '>= 8.1.4.1', require: false
 
 group :development, :test do
   gem 'appraisal', '~> 2.5'
   gem 'bundler-audit', '~> 0.9'
+  gem 'crass', '>= 1.0.8'
   gem 'minitest', '~> 5.0'
+  gem 'rack', '>= 3.2.8'
   gem 'rake', '~> 13.0'
   gem 'rubocop', '~> 1.86'
   gem 'rubocop-minitest', '~> 0.36'
   gem 'rubocop-rake', '~> 0.6'
-  gem 'rubycritic', '~> 5.0'
   gem 'simplecov', '~> 1.0'
 end

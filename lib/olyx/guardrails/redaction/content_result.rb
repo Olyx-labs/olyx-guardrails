@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative '../pii/text_scrubber'
+
 module Olyx
   module Guardrails
     module Redaction
@@ -13,13 +15,12 @@ module Olyx
         end
 
         def content(text, findings)
-          output = '[REDACTED]' if findings.any? { |finding| finding[:category] == 'confidentiality_marker' }
-          { text: output || text, findings: findings }
+          { text: text, findings: findings }
         end
 
         def detection(source, secret_scan, policy_redaction)
           {
-            pii_detected: PiiScrubber.scrub(source) != source,
+            pii_detected: Pii::TextScrubber.detect?(source),
             secret_leaked: secret_scan[:leaked],
             policy_violated: policy_redaction[:violated],
             policy_findings: policy_redaction[:findings]
