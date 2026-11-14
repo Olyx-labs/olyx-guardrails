@@ -10,42 +10,25 @@ module Olyx
 
       module_function
 
+      # Keep the fixed public contract together rather than splitting its fields across helpers.
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       def call(checks, analysis, policy)
         ordered = CHECK_ORDER.filter_map { |type| checks[type] }
-        base_result(checks, ordered, policy)
-          .merge(risk(checks, ordered, analysis))
-          .merge(analysis_result(analysis))
-      end
-
-      def base_result(checks, ordered, policy)
-        detection(checks, ordered).merge(policy(checks[:policy], policy))
-      end
-
-      def detection(checks, ordered)
-        {
+        result = {
           allowed: ordered.all? { |check| check[:allowed] },
           pii_detected: checks[:pii][:detected],
           injection_attempt: checks[:injection][:injection_attempt],
-          secret_leaked: checks[:secret][:leaked]
+          secret_leaked: checks[:secret][:leaked],
+          policy_name: policy.name,
+          policy_violated: checks[:policy][:violated],
+          policy_findings: checks[:policy][:findings],
+          risk_score: RiskScorer.call(checks, analysis),
+          checks: ordered
         }
+        result[:llm_analysis] = analysis if analysis
+        result
       end
-
-      def policy(check, configuration)
-        {
-          policy_name: configuration.name,
-          policy_violated: check[:violated],
-          policy_findings: check[:findings]
-        }
-      end
-
-      def risk(checks, ordered, analysis)
-        { risk_score: RiskScorer.call(checks, analysis), checks: ordered }
-      end
-
-      def analysis_result(analysis)
-        analysis ? { llm_analysis: analysis } : {}
-      end
-      private_class_method :base_result, :detection, :policy, :risk, :analysis_result
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
     end
   end
 end

@@ -350,3 +350,63 @@ Before deployment:
 7. run representative false-negative and false-positive evaluations;
 8. document unsupported PII, secret, and language formats; and
 9. keep authorization and access control independent from guardrail findings.
+
+## HTTP request and proxy limits
+
+Guardrails checks content after the application has obtained it. It does not
+limit HTTP bodies, configure a reverse proxy, or validate request hosts. Apply
+these controls before requests reach the application's content checks.
+
+Use patched dependencies: Rack >= 3.2.8, Rails >= 8.1.4.1 on the 8.1 line or
+>= 8.0.5.2 on the 8.0 line. Update the consuming application's lockfile too;
+upgrading this gem alone does not upgrade its Rails or Rack dependencies.
+
+### Bound multipart requests
+
+Set a request-body limit at the reverse proxy or application boundary before
+parsing. Set `RACK_MULTIPART_PARSER_BYTESIZE_LIMIT` to the largest multipart body
+the application accepts, in bytes, **before starting Ruby**. Rack reads this
+setting when its parser loads. For example, a 10 MiB limit:
+
+```sh
+RACK_MULTIPART_PARSER_BYTESIZE_LIMIT=10485760 bundle exec rails server
+```
+
+Configure the same total-body limit at the proxy. This includes multipart
+headers and boundaries, not just uploaded file bytes. Keep separate limits on
+file count, extraction time, and extracted text; none replaces the body limit.
+
+### Validate hosts and proxy headers
+
+Set an explicit Rails host allowlist in the consuming application's production
+configuration, replacing the example with its actual hostname:
+
+```ruby
+config.hosts = ['app.example.com']
+```
+
+For other Rack applications, enforce a host allowlist at the proxy or with
+`Rack::Protection::HostAuthorization`. Restrict direct access to the application
+server so clients cannot bypass the trusted proxy.
+
+For example, in an Nginx server block with a fixed, allowed hostname:
+
+```nginx
+client_max_body_size 10m;
+location / {
+    proxy_set_header Host app.example.com;
+    proxy_set_header X-Forwarded-Host app.example.com;
+    proxy_set_header Forwarded "";
+    proxy_pass http://application;
+}
+```
+
+Reject unknown hosts in the proxy's default server. Do not copy client-supplied
+`X-Forwarded-Host` or `Forwarded` values into trusted upstream headers. Where the
+installed Rack version supports `rack.request.config` with `:authority`, pin it
+to a configured canonical authority. Rack 3.2.8 does not expose that setting;
+use the host allowlist and proxy controls above.
+
+The Rack fixes are described in the upstream
+[multipart advisory](https://github.com/rack/rack/security/advisories/GHSA-5v64-555j-wjxm)
+and [invalid-authority advisory](https://github.com/rack/rack/security/advisories/GHSA-2j8w-xcrc-x985).

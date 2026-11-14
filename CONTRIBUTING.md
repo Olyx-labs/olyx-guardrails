@@ -117,3 +117,11 @@ Apache-2.0 license used by this project.
 
 Security vulnerabilities must follow [SECURITY.md](SECURITY.md), not the public
 issue tracker.
+
+### Dependency security minimums
+
+Development and CI require Rails >= 8.1.4.1 on the 8.1 line or >= 8.0.5.2
+on the 8.0 line, Rack >= 3.2.8, and Crass >= 1.0.8. Keep these minimums in
+`Gemfile`, `Appraisals`, and the generated appraisal Gemfiles when updating
+dependencies. CI audits every supported bundle against current advisories.
+These development requirements do not add Rails to the gem’s runtime dependencies.
