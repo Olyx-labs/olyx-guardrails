@@ -7,8 +7,8 @@ upgrade to the latest patch release before reporting an issue.
 
 | Version | Supported |
 |---|---|
-| 1.1.x | Yes |
-| <= 1.0 | No |
+| 1.2.x | Yes |
+| <= 1.1 | No |
 
 ## Reporting a vulnerability
 
@@ -16,7 +16,7 @@ Do not open a public issue for a suspected vulnerability.
 
 Use a
 [private GitHub security advisory](https://github.com/Olyx-labs/olyx-guardrails/security/advisories/new)
-or email `hello@olyxai.io` with:
+or email `security@olyxai.io` with:
 
 - the affected version and component;
 - reproduction steps or a minimal proof of concept;

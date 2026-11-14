@@ -3,9 +3,9 @@
 require_relative 'check_result_builder'
 require_relative 'check_analyzer'
 require_relative 'check_set'
-require_relative 'check_pipeline'
 require_relative 'policy'
 require_relative 'validation'
+require_relative 'message_source'
 
 module Olyx
   module Guardrails
@@ -15,16 +15,22 @@ module Olyx
         new(input, **).call
       end
 
-      def initialize(input, policy:, llm_provider:)
-        @source = input.to_s
+      def initialize(input, policy:, llm_provider:, structured: false)
+        Validation.array_of!(input, Hash, name: 'messages') if structured
+        @messages = input if structured
+        @source = input.to_s unless structured
         @policy = policy
         @llm_provider = llm_provider
         validate_options!
+        @source = MessageSource.call(input) if structured
       end
 
       def call
-        checks = CheckSet.call(@source, policy: @policy)
-        CheckPipeline.call(@source, checks, policy: @policy, llm_provider: @llm_provider)
+        checks = CheckSet.call(@source, policy: @policy, messages: @messages)
+        merged, analysis = CheckAnalyzer.call(
+          checks, provider: @llm_provider, source: @source, policy: @policy
+        )
+        CheckResultBuilder.call(merged, analysis, @policy)
       end
 
       private

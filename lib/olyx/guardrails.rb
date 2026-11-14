@@ -9,7 +9,6 @@ require_relative 'guardrails/injection_detector'
 require_relative 'guardrails/secret_scanner'
 require_relative 'guardrails/policy'
 require_relative 'guardrails/check_runner'
-require_relative 'guardrails/message_check_runner'
 require_relative 'guardrails/redactor'
 require_relative 'guardrails/notifier'
 require_relative 'guardrails/rails' if defined?(Rails::Railtie)
@@ -39,7 +38,6 @@ module Olyx
     SECRET_RISK_WEIGHT    = Risk::Weights::FINDINGS.fetch(:secret).last # :nodoc:
     PII_RISK_WEIGHT       = Risk::Weights::FINDINGS.fetch(:pii).last # :nodoc:
     POLICY_RISK_WEIGHT    = Risk::Weights::FINDINGS.fetch(:policy).last # :nodoc:
-    BLOCKED_RISK_WEIGHT   = Risk::Weights::BLOCKED # :nodoc:
 
     # :call-seq:
     #   check(input, policy: Policy.default, llm_provider: nil) -> Hash
@@ -75,7 +73,7 @@ module Olyx
     # +policy+ and +llm_provider+ behave as they do for check. Invalid message
     # structure raises ArgumentError.
     def self.check_messages(messages, policy: Policy.default, llm_provider: nil)
-      MessageCheckRunner.call(messages, policy: policy, llm_provider: llm_provider)
+      CheckRunner.call(messages, policy: policy, llm_provider: llm_provider, structured: true)
     end
 
     # :call-seq:

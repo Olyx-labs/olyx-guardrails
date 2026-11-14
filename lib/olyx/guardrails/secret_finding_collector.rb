@@ -2,7 +2,6 @@
 
 require_relative 'secrets/custom_pattern_source'
 require_relative 'secrets/catalog_source'
-require_relative 'secrets/confidentiality_source'
 require_relative 'secrets/internal_endpoint_source'
 require_relative 'secrets/finding_order'
 require_relative 'secrets/source_set'

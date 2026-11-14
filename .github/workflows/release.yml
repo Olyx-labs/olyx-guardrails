@@ -25,6 +25,9 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
 
+      - name: Audit release dependencies
+        run: bundle exec bundle-audit check --update
+
       - name: Release gate
         run: bundle exec rake ci
 

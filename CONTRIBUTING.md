@@ -17,18 +17,18 @@ rbenv install
 bin/setup
 ```
 
-Run the complete pre-pull-request gate:
+Run the standard local checks:
 
 ```bash
 bin/ci
 ```
 
 `bin/ci` runs coverage-enforced tests, documentation validation, public RDoc
-coverage, RuboCop, RubyCritic, and the strict per-file quality gate. Individual
-tests remain runnable through `bundle exec ruby -Itest path/to/test_file.rb`.
-CI separately refreshes the Ruby advisory database and audits the committed
-dependency lockfile. This network-backed check stays outside `bin/ci` so the
-local quality gate remains reproducible offline after setup.
+coverage, and RuboCop. Individual tests remain runnable through
+`bundle exec ruby -Itest path/to/test_file.rb`. CI separately refreshes the
+Ruby advisory database and audits the committed dependency lockfile. This
+network-backed check stays outside `bin/ci` so local validation remains
+reproducible offline after setup.
 
 ### Rails adapter changes
 
@@ -46,25 +46,10 @@ Ruby 3.4 or newer is supported. Changes must remain compatible with the oldest
 supported Ruby unless the same pull request deliberately changes the gem's
 requirement.
 
-RubyCritic is a blocking regression gate configured in `.rubycritic.yml`.
-Do not lower its baseline to merge a change. Refactor new hot spots and ratchet
-the minimum upward when sustained improvements raise the measured score.
-The minimum score is 95; new files must remain focused on one reason to change,
-and every production file must remain A-rated. RubyCritic smells, duplication,
-and per-file complexity are review signals, not automatic design instructions:
-address genuine responsibility or clarity problems, but do not introduce proxy
-methods, unnecessary indirection, or metaprogramming merely to silence a
-heuristic.
-
-RuboCop's `Metrics/AbcSize` (max 10), `Metrics/CyclomaticComplexity` (max 7),
-`Metrics/PerceivedComplexity` (max 7), and `Metrics/ClassLength` (max 60 lines)
-are the blocking structural-complexity gate, calibrated against this
-codebase's measured distribution rather than RuboCop's looser defaults. Do not
-split cohesive code, hide behavior behind dynamic dispatch, or weaken a public
-API merely to improve a score. A public DSL or metaprogramming macro that
-genuinely needs more room is a `# rubocop:disable` with an inline reason, or a
-file-level exclude in `.rubocop.yml` with a comment explaining the constraint
-— reviewed like any other exception, not a separate exemption file.
+RuboCop configuration is public and runs in CI, following the convention used
+by established Ruby gems. Treat its findings as review signals: keep cohesive
+behavior together and use a narrowly documented exception when a rule makes
+the implementation harder to understand.
 
 ## Documentation
 
@@ -110,10 +95,10 @@ open-source projects:
 Pull requests run with read-only GitHub token permissions, including
 contributions from forks. CI never requires repository secrets. The protected
 default branch requires the supported Ruby and Rails matrix, dependency audit,
-quality gate, CodeQL analysis, resolved review conversations, and valid commit
-signatures. The project currently has one maintainer, so independent approval
-is encouraged but not a branch-rule requirement; every merge still goes through
-a pull request after the required checks pass. Maintainers squash merged pull
+CodeQL analysis, and resolved review conversations.
+The project currently has one maintainer, so independent approval is encouraged
+but not a branch-rule requirement; every merge still goes through a pull
+request after the required checks pass. Maintainers squash merged pull
 requests, and GitHub deletes the source branch after merge.
 
 Maintainers may ask for a pull request to be split when unrelated behavior,
@@ -132,3 +117,11 @@ Apache-2.0 license used by this project.
 
 Security vulnerabilities must follow [SECURITY.md](SECURITY.md), not the public
 issue tracker.
+
+### Dependency security minimums
+
+Development and CI require Rails >= 8.1.4.1 on the 8.1 line or >= 8.0.5.2
+on the 8.0 line, Rack >= 3.2.8, and Crass >= 1.0.8. Keep these minimums in
+`Gemfile`, `Appraisals`, and the generated appraisal Gemfiles when updating
+dependencies. CI audits every supported bundle against current advisories.
+These development requirements do not add Rails to the gem’s runtime dependencies.

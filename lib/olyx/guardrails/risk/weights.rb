@@ -11,7 +11,6 @@ module Olyx
           pii: [:detected, 0.10],
           policy: [:violated, 0.25]
         }.freeze
-        BLOCKED = 0.15
       end
     end
   end
