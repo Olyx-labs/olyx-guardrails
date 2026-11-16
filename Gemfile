@@ -10,7 +10,7 @@ group :development, :test do
   gem 'appraisal', '~> 2.5'
   gem 'bundler-audit', '~> 0.9'
   gem 'crass', '>= 1.0.8'
-  gem 'minitest', '~> 5.0'
+  gem 'minitest', '~> 6.1'
   gem 'rack', '>= 3.2.8'
   gem 'rake', '~> 13.0'
   gem 'rubocop', '~> 1.86'
